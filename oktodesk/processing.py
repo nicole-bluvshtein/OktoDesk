@@ -48,18 +48,18 @@ def combined_expertise_areas(technicians):
     return areas
 
 
-def busiest_technician(open_ticket_count_by_technician):
+def busiest_technician(counts):
     busiest_id, busiest_count = None, -1
-    for technician_id, count in open_ticket_count_by_technician.items():
+    for technician_id, count in counts.items():
         if count > busiest_count:
             busiest_id, busiest_count = technician_id, count
     return busiest_id, busiest_count
 
 
-def insert_ticket(tickets_by_id, ticket):
-    if ticket.ticket_id in tickets_by_id:
+def insert_ticket(index, ticket):
+    if ticket.ticket_id in index:
         raise ValueError(f"duplicate ticket id: {ticket.ticket_id}")
-    tickets_by_id[ticket.ticket_id] = ticket
+    index[ticket.ticket_id] = ticket
 
 
 def new_notification_queue():
