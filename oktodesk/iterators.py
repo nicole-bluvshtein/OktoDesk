@@ -29,3 +29,10 @@ def iter_open_tickets(tickets):
     for ticket in tickets:
         if ticket.status != Status.CLOSED:
             yield ticket
+
+
+def open_ticket_id_pipeline(tickets, priority):
+    by_priority = (ticket for ticket in tickets if ticket.priority == priority)
+    open_only = (ticket for ticket in by_priority if ticket.status != Status.CLOSED)
+    ticket_ids = (ticket.ticket_id for ticket in open_only)
+    return ticket_ids
