@@ -20,7 +20,7 @@ def main():
         technician_id="tech-201", expertise_areas=["network", "hardware"]
     )
     manager = ITManager(
-        "u9", "TalAvrahan", "tal@company.com", "IT",
+        "u9", "Tal Avrahan", "tal@company.com", "IT",
         technician_id="tech-mgr", expertise_areas=["security"],
         managed_technicians=["tech-201", "tech-202"]
     )
@@ -51,7 +51,7 @@ def main():
     print("Open ticket count by technician:", counts_by_technician)
 
     print()
-    print("Top 3 named-functon urgency score:")
+    print("Top 3 named-function urgency score:")
     for t in proc.sort_by_urgency_score(tickets)[:3]:
         print(" -",t)
 
