@@ -1,6 +1,10 @@
+import itertools
+
 from oktodesk.repository import load_tickets
-from oktodesk.models import User, Technician, ITManager
+from oktodesk.models import User, Technician, ITManager, Priority, Status
 from oktodesk import processing as proc
+from oktodesk.iterators import TicketCollection, iter_open_tickets, open_ticket_id_pipeline
+from oktodesk.context_managers import TicketWorkSession
 
 def main():
     tickets_by_id, skipped = load_tickets("data/sample_data.jsonl")
@@ -79,6 +83,63 @@ def main():
         if ticket is None:
             break
         print(f" - {ticket.priority.name:<8} {ticket}")
-        
+
+    print()
+    print("=== TicketCollection / independent iterators demo ===")
+    collection = TicketCollection(tickets)
+    iterator_a = iter(collection)
+    iterator_b = iter(collection)
+
+    print("iterator_a first two:", next(iterator_a).ticket_id, next(iterator_a).ticket_id)
+    print("iterator_b first one:", next(iterator_b).ticket_id)
+    print("iterators are independent objects:", iterator_a is not iterator_b)
+
+    print()
+    print("=== iter_open_tickets generator demo ===")
+    open_tickets_gen = iter_open_tickets(tickets)
+    first = next(open_tickets_gen)
+    print("first ticket (manual next()):", first.ticket_id)
+    print("rest of open tickets (for loop):")
+    for ticket in open_tickets_gen:
+        print(" -", ticket.ticket_id)
+
+    print("second full pass needs a brand-new generator:")
+    for ticket in iter_open_tickets(tickets):
+        print(" -", ticket.ticket_id)
+
+    print()
+    print("=== Lazy three-stage pipeline demo ===")
+    visited_ids = []
+
+    def _tracked_tickets():
+        for ticket in tickets:
+            visited_ids.append(ticket.ticket_id)
+            yield ticket
+
+    pipeline = open_ticket_id_pipeline(_tracked_tickets(), Priority.HIGH)
+    first_two_ids = list(itertools.islice(pipeline, 2))
+    never_touched_ids = [t.ticket_id for t in tickets if t.ticket_id not in visited_ids]
+
+    print("first two open HIGH-priority ticket ids:", first_two_ids)
+    print("tickets never even inspected by the pipeline:", never_touched_ids)
+
+    print()
+    print("=== TicketWorkSession context manager demo ===")
+    normal_ticket = tickets_by_id[1]
+    print("before normal session:", normal_ticket.status)
+    with TicketWorkSession(normal_ticket, actor="tech-201") as session_ticket:
+        session_ticket.solution = "Replaced the jammed paper tray"
+        session_ticket.status = Status.CLOSED
+    print("after normal session:", normal_ticket.status)
+
+    failing_ticket = tickets_by_id[4]
+    print("before failing session:", failing_ticket.status)
+    try:
+        with TicketWorkSession(failing_ticket, actor="tech-201"):
+            raise RuntimeError("technician had to leave mid-repair")
+    except RuntimeError as exc:
+        print("caught:", exc)
+    print("after failing session (rolled back):", failing_ticket.status)
+
 if __name__ == "__main__":
     main()
