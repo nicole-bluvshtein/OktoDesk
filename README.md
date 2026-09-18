@@ -191,6 +191,106 @@ ITManager ─────────── מנהל ─────────
 
 ---
 
+## מימוש ה-OOP — הרכבה, ירושה ופולימורפיזם
+
+מומש ב-`oktodesk/models.py`.
+
+### הרכבה (Composition)
+
+`Ticket` "מכיל" את `activity_log` שלו — רשימת רשומות פעילות שאין להן משמעות
+עצמאית מחוץ לטיקט שהן שייכות אליו (יחס has-a אמיתי). שתי פעולות חושפות את
+היומן הזה:
+
+- `add_log_entry(performed_by, action)` — מוסיפה רשומה חדשה עם חותמת זמן.
+- `activity_summary()` — סופרת כמה פעולות ביצע כל גורם (`performed_by`),
+  באמצעות `counts.get(performed_by, 0) + 1` כדי לספור גם גורם שמופיע לראשונה
+  ביומן בלי לזרוק שגיאה.
+
+### ירושה ופולימורפיזם
+
+ההיררכיה: `User` (בסיס) ← `Technician(User)` ← `ITManager(Technician)`.
+
+כל מחלקה דורסת (`override`) את `describe_capabilities()`, וכל דריסה קוראת
+ל-`super().describe_capabilities()` ומוסיפה את היכולות הייחודיות לה — כך
+שהיכולות "נערמות" ככל שיורדים במדרג הירושה. ב-`main.py` מודגם הפולימורפיזם
+על ידי איטרציה על רשימה מעורבת (`list[User]`) המכילה גם `User`, גם
+`Technician` וגם `ITManager`, וקריאה ל-`.describe_capabilities()` על כל
+איבר — בלי אף בדיקת `isinstance()` או `type()` בשום מקום בקוד.
+
+### מחלקה מופשטת (Abstract Class)
+
+`NotificationChannel` היא מחלקה מופשטת (`ABC`) עם מתודה מופשטת אחת:
+`notify(ticket, message)`. Python מונע לחלוטין יצירת מופע ישיר של
+`NotificationChannel` — ניסיון כזה זורק `TypeError`. שתי תת-מחלקות קונקרטיות,
+`EmailNotificationChannel` ו-`SlackNotificationChannel`, ממשות את `notify()`
+בפועל (כרגע כ-`print` בלבד, ללא שליחה אמיתית).
+
+### עטיפה ואימות (Encapsulation & Validation)
+
+- `User.email` הוא property עם setter שבודק תבנית מייל תקינה ברגקס (regex),
+  וזורק `ValueError` עם שם השדה שנפסל אם הכתובת אינה תקינה.
+- `Ticket.priority` ו-`Ticket.status` הם גם הם properties, ושניהם עוברים דרך
+  מתודת בדיקה פרטית משותפת אחת — `_validated_enum_value` — שמוודאת שהערך
+  שהתקבל הוא באמת חבר של ה-`Enum` המתאים (`Priority` או `Status`), אחרת
+  זורקת `ValueError` ברור. כך אין דרך ליצור טיקט או לשנות אותו למצב לא-תקין.
+
+### כלים נוספים (מעבר ל-`from_dict`)
+
+- `Ticket.sla_target_hours(priority)` — `@staticmethod`, מיפוי טהור בין
+  רמת דחיפות ליעד ה-SLA שלה בשעות.
+- `Ticket.priority_rank` — property מחושב, ממיר את ה-`Priority` לדירוג
+  מספרי (0 = הכי דחוף).
+- `Ticket.is_overdue` — property מחושב שבודק אם הטיקט חרג מיעד ה-SLA שלו
+  (תמיד `False` עבור טיקט סגור).
+- `Ticket.__lt__` — משווה שני טיקטים לפי `(priority_rank, created_at)`,
+  ומאפשר להכניס טיקטים ישירות ל-heap של `heapq` בלי מפתח מיון נפרד.
+
+---
+
+## מבני נתונים ועיבוד קולקציות
+
+### מקור הנתונים ותהליך הטעינה
+
+`data/sample_data.jsonl` מכיל 16 רשומות טיקט סינתטיות שנוצרו בסיוע AI (ראו
+פירוט מלא ב-`AI_USAGE.md`) — קובץ JSONL, כלומר אובייקט JSON תקין אחד בכל
+שורה. `oktodesk/repository.py` (`load_tickets`) פותח את הקובץ עם
+`with open(path, encoding="utf-8") as f:` ועובר על אובייקט הקובץ שורה-שורה
+(לעולם לא `.read()` או `.readlines()`), כדי שהטעינה תישאר lazy ולא תדרוש
+לטעון את כל הקובץ לזיכרון בבת אחת.
+
+כל שורה עוברת `json.loads` ואז `Ticket.from_dict(...)`, שממיר את המילון
+הגולמי לאובייקט `Ticket` אמיתי (כולל המרת מחרוזות ל-`Priority`/`Status`
+מתאימים). תהליך האימות לכל שורה:
+
+- שדה חובה חסר, או ערך `priority`/`status` שאינו שם חבר תקין ב-Enum —
+  השורה **מדולגת** (`skip`) ומתועדת עם מספר השורה והסיבה, אך הטעינה ממשיכה.
+- מזהה טיקט (`ticket_id`) כפול — נחשב לשגיאה חמורה יותר: `load_tickets`
+  זורק `ValueError` ועוצר את הטעינה כולה, במקום לדרוס בשקט את הרשומה
+  הקיימת באינדקס.
+
+### טבלת מבני הנתונים
+
+| מבנה | היכן נעשה בו שימוש | למה |
+|---|---|---|
+| `list` | אוסף הטיקטים בזיכרון (`tickets`) | סדור, ניתן למיון מחדש |
+| `tuple` | רשומת דילוג בטעינה: `(line_number, reason)` | קצרה, קבועה, לא משתנה |
+| `set` | `Technician.expertise_areas`, `category_set(tickets)` | ייחודיות וחברות (`in`) הן העיקר, לא סדר |
+| `dict` #1 | `tickets_by_id: dict[int, Ticket]` | חיפוש מהיר לפי מזהה |
+| `dict` #2 | `open_ticket_count_by_technician: dict[str, int]` | קיבוץ וספירה |
+| `deque` (FIFO) | `notification_queue` | הודעת "טיקט נפתח" יוצאת לפי סדר הגעה |
+| `heapq` (Priority Queue) | תור הטיקטים הפתוחים של הטכנאי | הדחיפות גוברת על סדר ההגעה |
+
+### פעולות שמשנות אוסף קיים מול פעולות שיוצרות אוסף חדש
+
+| משנה במקום (mutate in place) | יוצרת אוסף חדש (returns new) |
+|---|---|
+| `activity_log.append(entry)` | `sorted(tickets, key=...)` |
+| `counts[performed_by] = ...` | `{t.category for t in tickets}` (set comprehension) |
+| `technician.expertise_areas.add(area)` | `{t.ticket_id: t for t in tickets}` (dict comprehension) |
+| `queue.append(...)` / `queue.popleft()` | `[t for t in tickets if t.is_overdue]` (list comprehension) |
+
+---
+
 ## הוראות הרצה
 
 > יתווספו בשלב ב׳ לאחר מימוש הקוד.
