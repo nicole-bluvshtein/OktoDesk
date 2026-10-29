@@ -1,7 +1,8 @@
 from oktodesk.models import Status
 
 _RESTORED_FIELDS = ("title", "description", "priority", "status",
-                    "assigned_to", "solution", "closed_at", "updated_at")
+                    "assigned_to", "solution", "closed_at", "updated_at",
+                    "waiting_since", "waiting_hours")
 
 
 class TicketWorkSession:

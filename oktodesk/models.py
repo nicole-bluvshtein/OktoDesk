@@ -12,6 +12,10 @@ def _parse_timestamp(value):
     return datetime.fromisoformat(value)
 
 
+def _hours_between(start, end):
+    return (end - start).total_seconds() / 3600
+
+
 class Status(Enum):
     OPEN = "פתוח"
     IN_PROGRESS = "בטיפול"
@@ -164,12 +168,16 @@ class ITManager(Technician):
 class Ticket:
     def __init__(self, ticket_id, title, description, category, priority, status,
                  opened_by, assigned_to=None, created_at=None, updated_at=None,
-                 closed_at=None, solution=None, activity_log=None):
+                 closed_at=None, solution=None, activity_log=None,
+                 waiting_since=None, waiting_hours=0.0):
         self.ticket_id = ticket_id
         self.title = title
         self.description = description
         self.category = self._required_text(category, "category")
         self.priority = priority
+        self.waiting_since = waiting_since
+        self.waiting_hours = waiting_hours
+        self._status = None
         self.status = status
         self.opened_by = self._required_text(opened_by, "opened_by")
         self.assigned_to = assigned_to
@@ -209,7 +217,17 @@ class Ticket:
 
     @status.setter
     def status(self, value):
-        self._status = self._validated_enum_value(value, Status, "status")
+        new_status = self._validated_enum_value(value, Status, "status")
+        if self._status is not None and new_status != self._status:
+            self._update_waiting_clock(new_status, datetime.now())
+        self._status = new_status
+
+    def _update_waiting_clock(self, new_status, now):
+        if new_status == Status.WAITING_INFO:
+            self.waiting_since = now
+        elif self._status == Status.WAITING_INFO and self.waiting_since is not None:
+            self.waiting_hours += _hours_between(self.waiting_since, now)
+            self.waiting_since = None
 
     @staticmethod
     def _validated_enum_value(value, enum_cls, field_name):
@@ -235,20 +253,28 @@ class Ticket:
 
     @classmethod
     def from_dict(cls, data):
+        status = cls._enum_from_name(data["status"], Status, "status")
+        created_at = _parse_timestamp(data.get("created_at"))
+        updated_at = _parse_timestamp(data.get("updated_at"))
+        waiting_since = _parse_timestamp(data.get("waiting_since"))
+        if status == Status.WAITING_INFO and waiting_since is None:
+            waiting_since = updated_at or created_at
         return cls(
             ticket_id=data["ticket_id"],
             title=data["title"],
             description=data["description"],
             category=data["category"],
             priority=cls._enum_from_name(data["priority"], Priority, "priority"),
-            status=cls._enum_from_name(data["status"], Status, "status"),
+            status=status,
             opened_by=data["opened_by"],
             assigned_to=data.get("assigned_to"),
-            created_at=_parse_timestamp(data.get("created_at")),
-            updated_at=_parse_timestamp(data.get("updated_at")),
+            created_at=created_at,
+            updated_at=updated_at,
             closed_at=_parse_timestamp(data.get("closed_at")),
             solution=data.get("solution"),
             activity_log=data.get("activity_log", []),
+            waiting_since=waiting_since,
+            waiting_hours=data.get("waiting_hours", 0.0),
         )
 
     def __str__(self):
@@ -347,12 +373,21 @@ class Ticket:
     def priority_rank(self):
         return _PRIORITY_RANK[self.priority]
 
+    def hours_over_sla(self, now=None):
+        now = now if now is not None else datetime.now()
+        end = self.closed_at if self.status == Status.CLOSED and self.closed_at else now
+        paused_hours = self.waiting_hours
+        if self.status == Status.WAITING_INFO and self.waiting_since is not None:
+            paused_hours += _hours_between(self.waiting_since, now)
+        clock_hours = _hours_between(self.created_at, end) - paused_hours
+        return clock_hours - self.sla_target_hours(self.priority)
+
+    def is_overdue_at(self, now):
+        return self.status != Status.CLOSED and self.hours_over_sla(now) > 0
+
     @property
     def is_overdue(self):
-        if self.status == Status.CLOSED:
-            return False
-        elapsed_hours = (datetime.now() - self.created_at).total_seconds() / 3600
-        return elapsed_hours > self.sla_target_hours(self.priority)
+        return self.is_overdue_at(datetime.now())
 
     def __lt__(self, other):
         return (self.priority_rank, self.created_at) < (other.priority_rank, other.created_at)
