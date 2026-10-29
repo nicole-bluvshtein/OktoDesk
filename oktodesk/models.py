@@ -261,9 +261,76 @@ class Ticket:
             f"assigned_to={self.assigned_to!r}, created_at={self.created_at!r})"
         )
 
-    def add_log_entry(self, performed_by, action):
-        entry = {"timestamp": datetime.now(), "performed_by": performed_by, "action": action}
+    def add_log_entry(self, performed_by, action, timestamp=None):
+        entry = {
+            "timestamp": timestamp if timestamp is not None else datetime.now(),
+            "performed_by": performed_by,
+            "action": action,
+        }
         self.activity_log.append(entry)
+
+    def _record_change(self, performed_by, action, now=None):
+        now = now if now is not None else datetime.now()
+        self.updated_at = now
+        self.add_log_entry(performed_by, action, timestamp=now)
+
+    def _require_not_closed(self, action):
+        if self.status == Status.CLOSED:
+            raise ValueError(f"Cannot {action} ticket #{self.ticket_id}: it is already closed")
+
+    def assign_to(self, technician):
+        self._require_not_closed("assign")
+        if self.assigned_to not in (None, technician.technician_id):
+            raise ValueError(f"Ticket #{self.ticket_id} is already assigned to {self.assigned_to}")
+        self.assigned_to = technician.technician_id
+        if self.ticket_id not in technician.assigned_tickets:
+            technician.assigned_tickets.append(self.ticket_id)
+        self.status = Status.IN_PROGRESS
+        self._record_change(technician.technician_id, f"assigned to {technician.technician_id}")
+
+    def update_details(self, performed_by, *, title=None, description=None,
+                       priority=None, status=None):
+        self._require_not_closed("update")
+        if status == Status.CLOSED:
+            raise ValueError("Use close() to close a ticket, so a solution is recorded")
+        requested = {"title": title, "description": description,
+                     "priority": priority, "status": status}
+        changes = {field: value for field, value in requested.items() if value is not None}
+        if not changes:
+            raise ValueError("update_details needs at least one field to change")
+        previous = {field: getattr(self, field) for field in changes}
+        try:
+            for field, value in changes.items():
+                setattr(self, field, value)
+        except ValueError:
+            for field, value in previous.items():
+                setattr(self, field, value)
+            raise
+        self._record_change(performed_by, "updated " + ", ".join(changes))
+
+    def close(self, performed_by, solution, now=None):
+        self._require_not_closed("close")
+        self.solution = self._required_text(solution, "solution")
+        now = now if now is not None else datetime.now()
+        self.status = Status.CLOSED
+        self.closed_at = now
+        self._record_change(performed_by, "closed with solution", now)
+
+    def to_knowledge_base_entry(self, entry_id, keywords=None):
+        if self.status != Status.CLOSED:
+            raise ValueError(f"Ticket #{self.ticket_id} must be closed before it becomes a KB entry")
+        title_words = {word.strip(".,:;!?()").lower() for word in self.title.split()
+                       if len(word) > 2}
+        return KnowledgeBaseEntry(
+            entry_id=entry_id,
+            title=self.title,
+            problem_description=self.description,
+            solution_description=self.solution,
+            category=self.category,
+            keywords=title_words | set(keywords or []),
+            source_ticket_id=self.ticket_id,
+            created_at=self.closed_at,
+        )
 
     def activity_summary(self):
         counts = {}
