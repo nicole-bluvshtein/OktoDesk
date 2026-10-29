@@ -115,21 +115,26 @@ def search_knowledge_base(entries, keyword, category=None):
         and (category is None or entry.category == category)
     ]
 
+def _match_score(entry, ticket_words, ticket_category):
+    matching_keywords = len(entry.keywords & ticket_words)
+    same_category = entry.category == ticket_category
+    return matching_keywords, same_category, entry.created_at
+
+
 def suggest_solutions(ticket, entries):
     if ticket.status == Status.CLOSED:
         raise ValueError(f"Ticket #{ticket.ticket_id} is closed; no suggestions needed")
-    ticket_words = {word.strip(".,:;!?()").lower() for word in ticket.title.split()
-                    if len(word) > 2}
-    scored = []
-    for entry in entries:
-        if entry.source_ticket_id == ticket.ticket_id:
-            continue
-        matches = len(entry.keywords & ticket_words)
-        if matches == 0:
-            continue
-        scored.append((matches, entry.category == ticket.category, entry.created_at, entry))
-    scored.sort(key=lambda item: item[:3], reverse=True)
-    ranked = [item[3] for item in scored]
+    ticket_words = ticket.title_words
+    candidates = [
+        entry for entry in entries
+        if entry.source_ticket_id != ticket.ticket_id and entry.keywords & ticket_words
+    ]
+    ranked = sorted(
+        candidates,
+        key=lambda entry: _match_score(entry, ticket_words, ticket.category),
+        reverse=True,
+    )
     if not ranked:
         return None, []
-    return ranked[0], ranked[1:]
+    top_match, *other_matches = ranked
+    return top_match, other_matches

@@ -210,6 +210,11 @@ class Ticket:
         self._description = _required_text(value, "description")
 
     @property
+    def title_words(self):
+        return {word.strip(".,:;!?()").lower() for word in self.title.split()
+                if len(word) > 2}
+
+    @property
     def priority(self):
         return self._priority
 
@@ -345,15 +350,13 @@ class Ticket:
     def to_knowledge_base_entry(self, entry_id, keywords=None):
         if self.status != Status.CLOSED:
             raise ValueError(f"Ticket #{self.ticket_id} must be closed before it becomes a KB entry")
-        title_words = {word.strip(".,:;!?()").lower() for word in self.title.split()
-                       if len(word) > 2}
         return KnowledgeBaseEntry(
             entry_id=entry_id,
             title=self.title,
             problem_description=self.description,
             solution_description=self.solution,
             category=self.category,
-            keywords=title_words | set(keywords or []),
+            keywords=self.title_words | set(keywords or []),
             source_ticket_id=self.ticket_id,
             created_at=self.closed_at,
         )
