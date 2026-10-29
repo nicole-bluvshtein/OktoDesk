@@ -1,6 +1,17 @@
 [project]
 name = "oktodesk"
-version = "0.1.0"
-description = "OktoDesk — internal IT-support ticketing system (Stage 1: local, single-process engine)"
+version = "0.2.0"
+description = "OktoDesk — internal IT-support ticketing system"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
