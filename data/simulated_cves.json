@@ -1,0 +1,25 @@
+{
+  "_note": "SIMULATED data for the offline security sweep. These are not real vulnerabilities; ids use the CVE-SIM- prefix on purpose.",
+  "chrome": {
+    "delay_seconds": 0.3,
+    "vulnerabilities": [
+      {"cve_id": "CVE-SIM-0001", "severity": "CRITICAL", "score": 9.8, "published": "2026-10-02T09:00:00"},
+      {"cve_id": "CVE-SIM-0002", "severity": "CRITICAL", "score": 9.1, "published": "2026-09-15T14:30:00"}
+    ]
+  },
+  "outlook": {
+    "delay_seconds": 0.1,
+    "vulnerabilities": []
+  },
+  "zoom": {
+    "delay_seconds": 0.2,
+    "vulnerabilities": [
+      {"cve_id": "CVE-SIM-0003", "severity": "CRITICAL", "score": 9.6, "published": "2026-08-20T11:00:00"}
+    ]
+  },
+  "vpn client": {
+    "delay_seconds": 0.05,
+    "fail": true,
+    "vulnerabilities": []
+  }
+}
