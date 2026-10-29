@@ -168,16 +168,32 @@ class Ticket:
         self.ticket_id = ticket_id
         self.title = title
         self.description = description
-        self.category = category
+        self.category = self._required_text(category, "category")
         self.priority = priority
         self.status = status
-        self.opened_by = opened_by
+        self.opened_by = self._required_text(opened_by, "opened_by")
         self.assigned_to = assigned_to
         self.created_at = created_at if created_at is not None else datetime.now()
         self.updated_at = updated_at if updated_at is not None else self.created_at
         self.closed_at = closed_at
         self.solution = solution
         self.activity_log = list(activity_log) if activity_log else []
+
+    @property
+    def title(self):
+        return self._title
+
+    @title.setter
+    def title(self, value):
+        self._title = self._required_text(value, "title")
+
+    @property
+    def description(self):
+        return self._description
+
+    @description.setter
+    def description(self, value):
+        self._description = self._required_text(value, "description")
 
     @property
     def priority(self):
@@ -201,6 +217,22 @@ class Ticket:
             return value
         raise ValueError(f"Invalid {field_name}: {value!r} is not a valid {enum_cls.__name__}")
 
+    @staticmethod
+    def _enum_from_name(name, enum_cls, field_name):
+        try:
+            return enum_cls[name]
+        except KeyError:
+            allowed = ", ".join(member.name for member in enum_cls)
+            raise ValueError(
+                f"Invalid {field_name}: {name!r} (expected one of {allowed})"
+            ) from None
+
+    @staticmethod
+    def _required_text(value, field_name):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field_name} must be a non-empty string")
+        return value
+
     @classmethod
     def from_dict(cls, data):
         return cls(
@@ -208,8 +240,8 @@ class Ticket:
             title=data["title"],
             description=data["description"],
             category=data["category"],
-            priority=Priority[data["priority"]],
-            status=Status[data["status"]],
+            priority=cls._enum_from_name(data["priority"], Priority, "priority"),
+            status=cls._enum_from_name(data["status"], Status, "status"),
             opened_by=data["opened_by"],
             assigned_to=data.get("assigned_to"),
             created_at=_parse_timestamp(data.get("created_at")),
