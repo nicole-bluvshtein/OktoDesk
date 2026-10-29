@@ -419,7 +419,7 @@ class KnowledgeBaseEntry:
         )
 
     def matches_keyword(self, keyword):
-        return keyword.lower() in {k.lower() for k in self.keywords}
+        return keyword.lower() in self.keywords
 
     def __str__(self):
         return f"KnowledgeBaseEntry(#{self.entry_id}, {self.title}, {self.category})"

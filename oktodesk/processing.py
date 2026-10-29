@@ -105,3 +105,12 @@ def sort_by_created_at(tickets):
 
 def sort_by_priority_then_created_at(tickets):
     return sorted(tickets, key=lambda t: (t.priority_rank, t.created_at))
+
+def search_knowledge_base(entries, keyword, category=None):
+    if not keyword or not keyword.strip():
+        raise ValueError("keyword must be a non-empty string")
+    return [
+        entry for entry in entries
+        if entry.matches_keyword(keyword.strip())
+        and (category is None or entry.category == category)
+    ]
