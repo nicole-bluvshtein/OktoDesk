@@ -36,10 +36,6 @@ def test_user_rejects_bad_email():
     with pytest.raises(ValueError):
         User("u1", "Dana Cohen", "not-an-email", "Finance")
 
-from datetime import datetime
-
-from oktodesk.models import Status
-
 
 CLOSE_TIME = datetime(2026, 9, 17, 15, 0)
 

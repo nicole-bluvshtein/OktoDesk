@@ -1,7 +1,7 @@
 import itertools
 
 from oktodesk.repository import load_tickets
-from oktodesk.models import User, Technician, ITManager, Priority, Status
+from oktodesk.models import User, Technician, ITManager, Priority
 from oktodesk import processing as proc
 from oktodesk.iterators import TicketCollection, iter_open_tickets, open_ticket_id_pipeline
 from oktodesk.context_managers import TicketWorkSession
@@ -127,19 +127,20 @@ def main():
     print("=== TicketWorkSession context manager demo ===")
     normal_ticket = tickets_by_id[1]
     print("before normal session:", normal_ticket.status)
-    with TicketWorkSession(normal_ticket, actor="tech-201") as session_ticket:
-        session_ticket.solution = "Replaced the jammed paper tray"
-        session_ticket.status = Status.CLOSED
-    print("after normal session:", normal_ticket.status)
+    with TicketWorkSession(normal_ticket, performed_by="tech-201") as session_ticket:
+        session_ticket.close("tech-201", "Replaced the jammed paper tray")
+    print("after normal session:", normal_ticket.status, "| closed at:", normal_ticket.closed_at)
 
     failing_ticket = tickets_by_id[4]
     print("before failing session:", failing_ticket.status)
     try:
-        with TicketWorkSession(failing_ticket, actor="tech-201"):
-            raise RuntimeError("technician had to leave mid-repair")
+        with TicketWorkSession(failing_ticket, performed_by="tech-201") as session_ticket:
+            session_ticket.close("tech-201", "Swapped the network switch")
+            raise RuntimeError("could not save the solution to the knowledge base")
     except RuntimeError as exc:
         print("caught:", exc)
-    print("after failing session (rolled back):", failing_ticket.status)
+    print("after failing session (rolled back):", failing_ticket.status,
+          "| solution:", failing_ticket.solution, "| closed at:", failing_ticket.closed_at)
 
 if __name__ == "__main__":
     main()
