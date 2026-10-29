@@ -1,6 +1,7 @@
 import json
 
 from oktodesk import processing as proc
+from oktodesk.models import Status
 
 
 def overdue_tickets(tickets, now):
@@ -31,7 +32,19 @@ def export_report(requested_by, tickets, now, path):
             for ticket_id, priority, hours_over in sla_breach_report(tickets, now)
         ],
         "workload": workload_report(tickets),
+        "vulnerabilities": vulnerability_report(tickets),
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
     return report
+
+def vulnerability_report(tickets):
+    summary = {}
+    for ticket in tickets:
+        if ticket.status == Status.CLOSED or ticket.vulnerability_check is None:
+            continue
+        by_result = summary.setdefault(
+            ticket.affected_product, {"vulnerable": [], "clear": [], "unknown": []}
+        )
+        by_result[ticket.vulnerability_check].append(ticket.ticket_id)
+    return summary

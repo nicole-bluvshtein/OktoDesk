@@ -21,7 +21,10 @@ class KnowledgeBaseRecorder(TicketObserver):
         pass
 
     def on_ticket_closed(self, ticket):
-        entry = ticket.to_knowledge_base_entry(self._next_entry_id())
+        keywords = list(ticket.linked_cves)
+        if ticket.affected_product:
+            keywords.append(ticket.affected_product)
+        entry = ticket.to_knowledge_base_entry(self._next_entry_id(), keywords=keywords)
         self.entries.append(entry)
 
     def _next_entry_id(self):
@@ -35,6 +38,8 @@ class NotificationObserver(TicketObserver):
 
     def on_ticket_opened(self, ticket):
         message = f"New {ticket.priority.name} ticket opened: {ticket.title}"
+        if ticket.linked_cves:
+            message += f" (critical vulnerabilities: {', '.join(ticket.linked_cves)})"
         proc.enqueue_notification(self.notification_queue, (ticket, message))
 
     def on_ticket_closed(self, ticket):
