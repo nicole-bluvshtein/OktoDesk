@@ -1,10 +1,10 @@
 import json
 
-from oktodesk.models import Ticket
+from oktodesk.models import Ticket, KnowledgeBaseEntry
 
 
-def load_tickets(path):
-    tickets_by_id = {}
+def _load_jsonl(path, from_dict, id_field):
+    items_by_id = {}
     skipped = []
 
     with open(path, encoding="utf-8") as f:
@@ -15,14 +15,23 @@ def load_tickets(path):
 
             try:
                 data = json.loads(line)
-                ticket = Ticket.from_dict(data)
+                item = from_dict(data)
             except (KeyError, ValueError, json.JSONDecodeError) as error:
                 skipped.append((line_number, str(error)))
                 continue
 
-            if ticket.ticket_id in tickets_by_id:
-                raise ValueError(f"Duplicate ticket_id {ticket.ticket_id!r} found at line {line_number}")
+            item_id = getattr(item, id_field)
+            if item_id in items_by_id:
+                raise ValueError(f"Duplicate {id_field} {item_id!r} found at line {line_number}")
 
-            tickets_by_id[ticket.ticket_id] = ticket
+            items_by_id[item_id] = item
 
-    return tickets_by_id, skipped
+    return items_by_id, skipped
+
+
+def load_tickets(path):
+    return _load_jsonl(path, Ticket.from_dict, "ticket_id")
+
+
+def load_knowledge_base(path):
+    return _load_jsonl(path, KnowledgeBaseEntry.from_dict, "entry_id")

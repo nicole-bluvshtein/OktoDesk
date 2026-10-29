@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from oktodesk.repository import load_tickets
+from oktodesk.repository import load_tickets, load_knowledge_base
 
 
 def _record(ticket_id, **overrides):
@@ -70,3 +70,44 @@ def test_duplicate_ticket_id_stops_the_load(write_jsonl):
     path = write_jsonl([_record(1), _record(5), _record(5)])
     with pytest.raises(ValueError, match="Duplicate ticket_id 5 found at line 3"):
         load_tickets(path)
+
+
+def _kb_record(entry_id, **overrides):
+    record = {
+        "entry_id": entry_id,
+        "title": f"Entry {entry_id}",
+        "problem_description": "Something broke",
+        "solution_description": "Fixed it",
+        "category": "hardware",
+        "keywords": ["Printer", "jam"],
+    }
+    record.update(overrides)
+    return record
+
+
+# T14 - loading
+def test_kb_loader_reads_entries_and_normalizes_keywords(write_jsonl):
+    path = write_jsonl([_kb_record(1), _kb_record(2)])
+    entries_by_id, skipped = load_knowledge_base(path)
+    assert sorted(entries_by_id) == [1, 2]
+    assert skipped == []
+    assert entries_by_id[1].keywords == {"printer", "jam"}
+
+
+def test_kb_loader_skips_entry_with_empty_solution(write_jsonl):
+    path = write_jsonl([_kb_record(1), _kb_record(2, solution_description="  "), _kb_record(3)])
+    entries_by_id, skipped = load_knowledge_base(path)
+    assert sorted(entries_by_id) == [1, 3]
+    assert skipped == [(2, "solution_description must be a non-empty string")]
+
+
+def test_kb_loader_stops_on_duplicate_entry_id(write_jsonl):
+    path = write_jsonl([_kb_record(1), _kb_record(1)])
+    with pytest.raises(ValueError, match="Duplicate entry_id 1 found at line 2"):
+        load_knowledge_base(path)
+
+
+def test_real_knowledge_base_loads_completely():
+    entries_by_id, skipped = load_knowledge_base("data/knowledge_base.jsonl")
+    assert len(entries_by_id) == 8
+    assert skipped == []

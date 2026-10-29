@@ -87,3 +87,19 @@ sample of records was also spot-checked by hand for correct `Status`/`Priority`
 mapping and sensible `is_overdue` results (open, non-`LOW`-priority tickets
 created more than their SLA window ago correctly report `is_overdue=True`;
 closed tickets and fresh `LOW`-priority tickets report `False`).
+
+## Knowledge Base data (Stage 2)
+
+Claude (via Claude Code) drafted the 8 records in `data/knowledge_base.jsonl`.
+
+**Prompt (summary):** write 8 KnowledgeBaseEntry records as JSONL. Three must be
+built from the closed tickets 5, 7 and 12 in `sample_data.jsonl` — same solution
+text, `source_ticket_id` set, `created_at` equal to the ticket's `closed_at`. The
+other five should match problems in the *open* tickets (printer jam, VPN, shared
+drive, laptop battery, slow network) so the "suggest solutions" feature has real
+matches, while some open tickets deliberately have no match. Categories must be
+ones the tickets use; no real personal data.
+
+**What we checked:** loaded the file through `load_knowledge_base` — 8 entries,
+0 skipped. Compared entries 1–3 with tickets 5, 7 and 12 by hand (solution text
+and dates). Kept as a test: `test_real_knowledge_base_loads_completely`.

@@ -16,6 +16,12 @@ def _hours_between(start, end):
     return (end - start).total_seconds() / 3600
 
 
+def _required_text(value, field_name):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return value
+
+
 class Status(Enum):
     OPEN = "פתוח"
     IN_PROGRESS = "בטיפול"
@@ -173,13 +179,13 @@ class Ticket:
         self.ticket_id = ticket_id
         self.title = title
         self.description = description
-        self.category = self._required_text(category, "category")
+        self.category = _required_text(category, "category")
         self.priority = priority
         self.waiting_since = waiting_since
         self.waiting_hours = waiting_hours
         self._status = None
         self.status = status
-        self.opened_by = self._required_text(opened_by, "opened_by")
+        self.opened_by = _required_text(opened_by, "opened_by")
         self.assigned_to = assigned_to
         self.created_at = created_at if created_at is not None else datetime.now()
         self.updated_at = updated_at if updated_at is not None else self.created_at
@@ -193,7 +199,7 @@ class Ticket:
 
     @title.setter
     def title(self, value):
-        self._title = self._required_text(value, "title")
+        self._title = _required_text(value, "title")
 
     @property
     def description(self):
@@ -201,7 +207,7 @@ class Ticket:
 
     @description.setter
     def description(self, value):
-        self._description = self._required_text(value, "description")
+        self._description = _required_text(value, "description")
 
     @property
     def priority(self):
@@ -244,12 +250,6 @@ class Ticket:
             raise ValueError(
                 f"Invalid {field_name}: {name!r} (expected one of {allowed})"
             ) from None
-
-    @staticmethod
-    def _required_text(value, field_name):
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"{field_name} must be a non-empty string")
-        return value
 
     @classmethod
     def from_dict(cls, data):
@@ -336,7 +336,7 @@ class Ticket:
 
     def close(self, performed_by, solution, now=None):
         self._require_not_closed("close")
-        self.solution = self._required_text(solution, "solution")
+        self.solution = _required_text(solution, "solution")
         now = now if now is not None else datetime.now()
         self.status = Status.CLOSED
         self.closed_at = now
@@ -397,11 +397,11 @@ class KnowledgeBaseEntry:
     def __init__(self, entry_id, title, problem_description, solution_description,
                  category, keywords=None, source_ticket_id=None, created_at=None):
         self.entry_id = entry_id
-        self.title = title
-        self.problem_description = problem_description
-        self.solution_description = solution_description
-        self.category = category
-        self.keywords = set(keywords) if keywords else set()
+        self.title = _required_text(title, "title")
+        self.problem_description = _required_text(problem_description, "problem_description")
+        self.solution_description = _required_text(solution_description, "solution_description")
+        self.category = _required_text(category, "category")
+        self.keywords = {keyword.lower() for keyword in keywords} if keywords else set()
         self.source_ticket_id = source_ticket_id
         self.created_at = created_at if created_at is not None else datetime.now()
 
