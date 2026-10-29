@@ -2,7 +2,7 @@
 
 ## Tool
 
-Claude (Claude Sonnet 5, via Claude Code) was used to draft the synthetic ticket
+Claude (via Claude Code) was used to draft the synthetic ticket
 records in `data/sample_data.jsonl`. The AI generated the *data* only — every
 class, method, and validation rule in `oktodesk/` was written and reviewed
 line by line during this session, not generated in bulk and accepted as-is.
@@ -50,29 +50,28 @@ Generate 16 realistic IT-support ticket records as JSON, one object per line
 }
 ```
 
-## Problems found and how they were fixed
+## Data errors introduced on purpose to test the loader
 
-The first generated draft was loaded through `oktodesk.repository.load_tickets`
-to check it against the real validation logic (not just eyeballed). Three
-issues surfaced, all of the kind the assignment brief warns to expect from
-AI-generated data:
+The generated data loaded cleanly. To prove that
+`oktodesk.repository.load_tickets` really handles bad input — the kind of
+mistakes the assignment brief warns to expect from AI-generated data — we
+deliberately introduced three errors into the file, loaded it, checked that
+each one was caught the way the loader's policy says, and then removed them:
 
-1. **Missing required field.** The record for ticket `3` was missing
-   `category`. `Ticket.from_dict` raises a `KeyError` on the missing key,
-   which `load_tickets` catches and records as a skipped row:
-   `(3, "'category'")`. Fixed by adding `"category": "access"`.
+1. **Missing required field.** We removed `category` from ticket `3`.
+   `Ticket.from_dict` raised a `KeyError`, which `load_tickets` caught and
+   recorded as a skipped row: `(3, "'category'")`. Restored `"category": "access"`.
 
-2. **Bad enum casing.** The record for ticket `11` had `"priority": "high"`
-   (lowercase) instead of `"HIGH"`. Enum member lookup (`Priority["high"]`)
-   is case-sensitive and raised a `KeyError`, again caught and skipped:
-   `(11, "'high'")`. Fixed by correcting the casing to `"HIGH"`.
+2. **Bad enum casing.** We changed ticket `11` to `"priority": "high"`
+   (lowercase). Enum member lookup (`Priority["high"]`) is case-sensitive and
+   raised a `KeyError`, again caught and skipped: `(11, "'high'")`.
+   Restored `"HIGH"`.
 
-3. **Duplicate `ticket_id`.** One record intended to be ticket `12` was
-   accidentally written with `"ticket_id": 5`, colliding with an earlier
-   record. Per `load_tickets`'s duplicate-id policy, this is treated as fatal
-   rather than silently overwriting the index — it raised
-   `ValueError: Duplicate ticket_id 5 found at line 12` and halted loading
-   entirely. Fixed by correcting the id back to `12`.
+3. **Duplicate `ticket_id`.** We changed ticket `12` to `"ticket_id": 5`,
+   colliding with an earlier record. Per `load_tickets`'s duplicate-id policy
+   this is fatal rather than silently overwriting the index — it raised
+   `ValueError: Duplicate ticket_id 5 found at line 12` and halted loading.
+   Restored the id to `12`.
 
 ## Verification
 
