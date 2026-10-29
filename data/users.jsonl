@@ -1,0 +1,20 @@
+{"user_id": "emp-101", "name": "Noa Levi", "email": "noa.levi@example.com", "department": "Finance", "role": "employee"}
+{"user_id": "emp-102", "name": "Yossi Mizrahi", "email": "yossi.mizrahi@example.com", "department": "Sales", "role": "employee"}
+{"user_id": "emp-103", "name": "Maya Peretz", "email": "maya.peretz@example.com", "department": "Finance", "role": "employee"}
+{"user_id": "emp-104", "name": "Eitan Shapiro", "email": "eitan.shapiro@example.com", "department": "Marketing", "role": "employee"}
+{"user_id": "emp-105", "name": "Shira Ben-David", "email": "shira.bendavid@example.com", "department": "HR", "role": "employee"}
+{"user_id": "emp-106", "name": "Omer Friedman", "email": "omer.friedman@example.com", "department": "Sales", "role": "employee"}
+{"user_id": "emp-107", "name": "Tamar Azoulay", "email": "tamar.azoulay@example.com", "department": "Legal", "role": "employee"}
+{"user_id": "emp-108", "name": "Guy Rosen", "email": "guy.rosen@example.com", "department": "Operations", "role": "employee"}
+{"user_id": "emp-109", "name": "Lior Katz", "email": "lior.katz@example.com", "department": "HR", "role": "employee"}
+{"user_id": "emp-110", "name": "Adi Golan", "email": "adi.golan@example.com", "department": "Sales", "role": "employee"}
+{"user_id": "emp-111", "name": "Ron Dahan", "email": "ron.dahan@example.com", "department": "Marketing", "role": "employee"}
+{"user_id": "emp-112", "name": "Yael Biton", "email": "yael.biton@example.com", "department": "Finance", "role": "employee"}
+{"user_id": "emp-113", "name": "Itay Segal", "email": "itay.segal@example.com", "department": "Legal", "role": "employee"}
+{"user_id": "emp-114", "name": "Michal Harel", "email": "michal.harel@example.com", "department": "Operations", "role": "employee"}
+{"user_id": "emp-115", "name": "Dor Avraham", "email": "dor.avraham@example.com", "department": "Operations", "role": "employee"}
+{"user_id": "emp-116", "name": "Hila Oren", "email": "hila.oren@example.com", "department": "Marketing", "role": "employee"}
+{"user_id": "emp-201", "name": "Roi Katz", "email": "roi.katz@example.com", "department": "IT", "role": "technician", "technician_id": "tech-201", "expertise_areas": ["hardware", "network"]}
+{"user_id": "emp-202", "name": "Dana Weiss", "email": "dana.weiss@example.com", "department": "IT", "role": "technician", "technician_id": "tech-202", "expertise_areas": ["access", "software"]}
+{"user_id": "emp-203", "name": "Avi Cohen", "email": "avi.cohen@example.com", "department": "IT", "role": "technician", "technician_id": "tech-203", "expertise_areas": ["infrastructure", "security"]}
+{"user_id": "emp-300", "name": "Tal Avraham", "email": "tal.avraham@example.com", "department": "IT", "role": "it_manager", "technician_id": "tech-300", "expertise_areas": ["security"], "managed_technicians": ["tech-201", "tech-202", "tech-203"], "can_export_reports": true}
