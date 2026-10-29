@@ -138,3 +138,22 @@ def suggest_solutions(ticket, entries):
         return None, []
     top_match, *other_matches = ranked
     return top_match, other_matches
+
+
+class TicketQueue:
+    def __init__(self, tickets=None):
+        self._heap = new_priority_queue()
+        for ticket in tickets or []:
+            self.push(ticket)
+
+    def push(self, ticket):
+        push_ticket(self._heap, ticket)
+
+    def pop_most_urgent(self):
+        return pop_most_urgent_ticket(self._heap)
+
+    def rebuild(self):
+        heapq.heapify(self._heap)
+
+    def __len__(self):
+        return len(self._heap)
