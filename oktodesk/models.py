@@ -82,6 +82,9 @@ class User:
     def describe_capabilities(self):
         return f"{self.name} can open tickets and view their own tickets."
 
+    def can_export(self):
+        return False
+
     def __str__(self):
         return f"User({self.name}, {self.role}, {self.department})"
 
@@ -158,6 +161,9 @@ class ITManager(Technician):
         count = len(self.managed_technicians)
         export = "can" if self.can_export_reports else "cannot"
         return f"{base} As an IT manager, {self.name} also oversees {count} technician(s), tracks SLA compliance, and {export} export reports."
+
+    def can_export(self):
+        return self.can_export_reports
 
     def __str__(self):
         return f"ITManager({self.name}, manages {len(self.managed_technicians)} technician(s))"
