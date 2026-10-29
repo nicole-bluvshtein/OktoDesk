@@ -124,7 +124,7 @@ def _match_score(entry, ticket_words, ticket_category):
 def suggest_solutions(ticket, entries):
     if ticket.status == Status.CLOSED:
         raise ValueError(f"Ticket #{ticket.ticket_id} is closed; no suggestions needed")
-    ticket_words = ticket.title_words
+    ticket_words = ticket.search_words
     candidates = [
         entry for entry in entries
         if entry.source_ticket_id != ticket.ticket_id and entry.keywords & ticket_words
