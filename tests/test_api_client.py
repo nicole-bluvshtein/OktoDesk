@@ -5,7 +5,7 @@ import pytest
 import requests
 
 from oktodesk.api_client import (
-    InvalidServiceDataError, NvdClient, ServiceHTTPError, ServiceUnavailableError,
+    InvalidServiceDataError, MalformedJSONError, NvdClient, UnexpectedStructureError, ServiceHTTPError, ServiceUnavailableError,
     Vulnerability, VulnerabilityReport, VulnerabilityServiceError,
 )
 from oktodesk.config import NVD_CVE_URL, NvdConfig
@@ -137,7 +137,7 @@ def test_http_error_raises_service_http_error_and_is_tried_once(config, sleep, s
 def test_bad_structure_raises_invalid_data_and_is_not_retried(config, sleep, payload):
     session = Mock()
     session.get.return_value = ok_response(payload)
-    with pytest.raises(InvalidServiceDataError):
+    with pytest.raises(UnexpectedStructureError):
         make_client(session, sleep, config).find_recent_critical("chrome", now=NOW)
     assert session.get.call_count == 1
     sleep.assert_not_called()
@@ -150,7 +150,7 @@ def test_malformed_json_raises_invalid_data(config, sleep):
     response.json.side_effect = requests.exceptions.JSONDecodeError("Expecting value", "<html>", 0)
     session = Mock()
     session.get.return_value = response
-    with pytest.raises(InvalidServiceDataError, match="not valid JSON"):
+    with pytest.raises(MalformedJSONError, match="not valid JSON"):
         make_client(session, sleep, config).find_recent_critical("chrome", now=NOW)
     assert session.get.call_count == 1
 
@@ -183,7 +183,7 @@ def test_three_connection_errors_stop_after_exactly_three_calls(config, sleep):
 @pytest.mark.parametrize("session_result, error_cls", [
     (requests.Timeout("slow"), ServiceUnavailableError),
     (http_error_response(503), ServiceHTTPError),
-    (ok_response({"totalResults": 1}), InvalidServiceDataError),
+    (ok_response({"totalResults": 1}), UnexpectedStructureError),
 ])
 def test_every_failure_names_its_product(config, sleep, session_result, error_cls):
     session = Mock()
@@ -199,6 +199,13 @@ def test_every_failure_names_its_product(config, sleep, session_result, error_cl
 def test_every_service_error_shares_one_base_class():
     for error_cls in (ServiceUnavailableError, ServiceHTTPError, InvalidServiceDataError):
         assert issubclass(error_cls, VulnerabilityServiceError)
+
+
+def test_malformed_json_and_wrong_structure_are_different_errors():
+    assert issubclass(MalformedJSONError, InvalidServiceDataError)
+    assert issubclass(UnexpectedStructureError, InvalidServiceDataError)
+    assert not issubclass(MalformedJSONError, UnexpectedStructureError)
+    assert not issubclass(UnexpectedStructureError, MalformedJSONError)
 
 
 def test_api_key_never_appears_in_logs(sleep, caplog):
