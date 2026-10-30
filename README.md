@@ -405,8 +405,108 @@ ITManager ─────────── מנהל ─────────
 - דוח SLA ועומס עם שעון שנעצר בהמתנה למידע; ייצוא רק למנהל מורשה.
 - טעינת משתמשים מקובץ, כל אחד כמחלקה הנכונה לפי תפקידו.
 
+### 2. איך מריצים
+
+- **Python 3.10 ומעלה.** התלויות מוגדרות ב-`pyproject.toml`: `requests` לפנייה
+  לשירות החיצוני, ו-`pytest` כתלות פיתוח להרצת הבדיקות.
+- **ברירת המחדל לא צריכה רשת או מפתח.** בדיקת הפגיעויות רצה על נתונים מקומיים
+  מ-`data/simulated_cves.json`, וכל שורה בפלט מסומנת `[SIMULATED]`.
+- **מול השירות האמיתי** מריצים עם `--live`; השורות מסומנות `[LIVE]`.
+
+```bash
+# יצירת סביבה וירטואלית והפעלתה
+# macOS / Linux:
+python3 -m venv .venv
+source .venv/bin/activate
+# Windows (PowerShell):
+py -3 -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# התקנת הפרויקט והתלויות (כולל pytest)
+pip install -e ".[dev]"
+
+# הרצה ללא רשת (נתונים מדומים)
+python main.py
+
+# הרצה מול NVD האמיתי
+python main.py --live
+
+# הרצת הבדיקות (ללא רשת, ללא מפתח וללא המתנות Retry אמיתיות)
+python -m pytest -q
+```
+
+**משתני סביבה** — כולם רשות; השמות וערכי הדוגמה ב-`.env.example`. התוכנית קוראת
+משתני סביבה של המסוף ואינה טוענת קובץ `.env`, ולכן אין צורך בתלות נוספת:
+
+| משתנה | תפקיד |
+|---|---|
+| `NVD_API_KEY` | מפתח NVD (רשות): מעלה את מגבלת הבקשות מ-5 ל-50 בכל 30 שניות |
+| `OKTODESK_LIVE` | `true` — כמו `--live` |
+| `OKTODESK_NVD_TIMEOUT`, `OKTODESK_NVD_ATTEMPTS`, `OKTODESK_NVD_RETRY_WAIT`, `OKTODESK_NVD_LOOKBACK_DAYS` | כיוונון ה-timeout, מספר הניסיונות, ההמתנה ביניהם ותקופת החיפוש |
+
+```bash
+# macOS / Linux:
+export NVD_API_KEY="your-key"
+# Windows (PowerShell):
+$env:NVD_API_KEY = "your-key"
+```
+
+> **הערה (Windows):** חלק מהנתונים וטקסטי התצוגה של `Status`/`Priority` הם בעברית.
+> אם מסוף Windows זורק `UnicodeEncodeError` בזמן ההדפסה, יש להריץ עם קידוד UTF-8
+> מפורש: `py -X utf8 main.py`.
+
+### 3. איך הקוד מאורגן
+
+```text
+OktoDesk/
+├── main.py                    הדגמה מלאה; ללא רשת כברירת מחדל, --live לשירות האמיתי
+├── pyproject.toml             תלויות (requests; pytest כתלות פיתוח)
+├── .env.example               שמות משתני הסביבה וערכי דוגמה בלבד
+├── data/
+│   ├── sample_data.jsonl      טיקטים, כולל התוכנה הפגועה
+│   ├── knowledge_base.jsonl   רשומות ה-Knowledge Base
+│   ├── users.jsonl            עובדים, טכנאים ומנהל
+│   └── simulated_cves.json    תוצאות פגיעויות מדומות להרצה ללא רשת
+├── oktodesk/
+│   ├── models.py              ישויות: משתמשים, Ticket ומחזור חייו, KB, ערוצי הודעות
+│   ├── repository.py          טעינת JSONL שורה-שורה עם אימות: טיקטים, KB, משתמשים
+│   ├── processing.py          מבני נתונים, מיון, חיפוש ב-KB, הצעת פתרונות, TicketQueue
+│   ├── reports.py             דוח SLA, עומס, פגיעויות וייצוא למנהל מורשה
+│   ├── factories.py           Factory: create_user לפי תפקיד
+│   ├── observers.py           Observer: תגובות לפתיחה ולסגירה של טיקט
+│   ├── services.py            TicketService: התהליכים העסקיים והחלטת הפגיעויות
+│   ├── api_client.py          NvdClient: בקשת GET, Retry, אימות והמרה לאובייקטים
+│   ├── config.py              הגדרות השירות ממשתני סביבה
+│   ├── async_processing.py    סריקת אבטחה: בדיקת כמה תוכנות, סדרתית מול gather
+│   ├── threaded_processing.py תור מוגן ב-Lock ומירוץ טכנאים על הטיקט האחרון
+│   ├── context_managers.py    TicketWorkSession עם שחזור מלא בכשל
+│   └── iterators.py           Iterator, גנרטור וצינור עצלן (משלב 1)
+└── tests/                     קובץ בדיקות לכל מודול; conftest.py עם Fixtures משותפים
+```
+
 ### 4. החלטות תכנון מרכזיות
 
+- **השירות החיצוני — NVD CVE API 2.0**
+  ([תיעוד](https://nvd.nist.gov/developers/vulnerabilities)) — מאגר הפגיעויות של
+  ממשלת ארה"ב: חינמי, ללא חובת מפתח, ומסנן לפי פרמטרים אמיתיים. בקשת GET אחת לכל
+  תוכנה עם `keywordSearch`, `cvssV3Severity=CRITICAL`, `pubStartDate`/`pubEndDate`
+  (90 הימים האחרונים) ו-`resultsPerPage`, עם timeout. התשובה נבדקת (`totalResults`,
+  ולכל CVE מזהה, חומרה וציון) ומומרת ל-`VulnerabilityReport`. `api_client.py` רק
+  מתקשר ומאמת; ההחלטה מה לעשות בתוצאה נמצאת ב-`services.py`, ותוצאה לכל תוכנה
+  נשמרת לזמן הריצה כדי לא לחזור על אותה בקשה.
+- **טיפול בכשל** — ארבעה סוגי כשל נפרדים, כולם יורשים מ-`VulnerabilityServiceError`
+  ונושאים את שם התוכנה:
+  - כשל תקשורת (`Timeout`/`ConnectionError`) — עד 3 ניסיונות בסך הכול עם המתנה
+    ביניהם, ואחריהם `ServiceUnavailableError` ברור.
+  - שגיאת HTTP, כולל 401/403 (NVD מחזיר 403 גם על מפתח שגוי או חריגה ממגבלת
+    הבקשות) — `ServiceHTTPError`, ללא ניסיון חוזר.
+  - JSON שאינו ניתן לפענוח, או שדה חסר/ערך לא תקין — `InvalidServiceDataError`,
+    ללא ניסיון חוזר.
+
+  התגובה העסקית ב-`services.py`: הטיקט מסומן "בדיקת פגיעויות לא ידועה", הדחיפות
+  **לא** משתנה, נרשמת אזהרה בלוג, והטיקט מטופל כרגיל; הדוח מציג את הבדיקות שנכשלו.
+  הלוגים מתעדים כל ניסיון וכל כשל, בלי המפתח. נתונים מדומים לעולם אינם מוצגים
+  כאמיתיים.
 - **Factory (`factories.py`)** — `create_user(record)` בוחר `User`, `Technician`
   או `ITManager` לפי התפקיד, דרך מילון תפקיד→מחלקה. קובץ המשתמשים מערבב תפקידים,
   ולכן יש מקום אחד שמחליט; תפקיד חדש = שורה אחת במילון. הקוד העסקי לא בודק סוגים:
@@ -420,50 +520,20 @@ ITManager ─────────── מנהל ─────────
   Base, המאזינים, התור ולקוח הפגיעויות. כל רכיב אחראי על דבר אחד: השירות מחליט,
   `api_client` מתקשר, התור קובע סדר. בבדיקות מעבירים מאזינים ולקוח מדומים (Mock),
   ולכן אין רשת; במירוץ ה-Threads מחליפים לתור מוגן בלי לשנות שורה בשירות.
+- **משימות עצמאיות (`async_processing.py`)** — סריקת האבטחה בודקת מחדש כל תוכנה
+  שמופיעה בטיקט פתוח; כל בדיקה לא תלויה בתוצאה של אחרת. החלק הזה **מדומה**:
+  `await asyncio.sleep` ונתונים מקומיים מ-`data/simulated_cves.json` (מזהים
+  בתבנית `CVE-SIM-` כדי שלא יתבלבלו עם אמיתיים), והוא אינו מחליף את החיבור
+  האמיתי. הגרסה הסדרתית ממתינה לכל בדיקה בתורה; האסינכרונית יוצרת משימה לכל
+  תוכנה (`create_task`) לפני האיסוף ב-`gather`. בשתיהן מתקבלת תוצאה אחת לכל
+  תוכנה, לפי סדר הקלט, גם כשסדר הסיום שונה. בדיקה שנכשלה מחזירה את השגיאה במקומה,
+  והאחרות ממשיכות; `apply_vulnerability_reports` מסמן את הטיקטים של אותה תוכנה
+  "לא ידוע", מעדכן את השאר ובונה מחדש את התור כדי שדחיפות שעלתה תשפיע על הסדר.
 - **משאב משותף ו-Lock (`threaded_processing.py`)** — המשאב הוא תור הטיקטים של
   השירות. בלי נעילה, שני טכנאים יכולים לבדוק "נשאר טיקט?" באותו רגע, שניהם רואים
   "כן", הראשון לוקח — והשני מנסה לקחת מתור ריק (`IndexError`) או מקבל את אותו
   טיקט פעמיים. `ThreadSafeTicketQueue` עוטף את הבדיקה והלקיחה ב-Lock אחד, כך שהן
   צעד אחד. אין קריאת רשת בתוך הנעילה: בדיקת הפגיעויות קורית בפתיחת הטיקט.
-
----
-
-## הוראות הרצה
-
-דורש **Python 3.10 ומעלה**. התלות החיצונית היחידה היא `requests` (לפנייה לשירות
-החיצוני); `pytest` משמש להרצת הבדיקות.
-
-```bash
-# יצירת סביבה וירטואלית
-# macOS / Linux:
-python3 -m venv .venv
-# Windows:
-py -3 -m venv .venv
-
-# הפעלת הסביבה
-# macOS / Linux:
-source .venv/bin/activate
-# Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-
-# התקנת התלויות
-pip install requests "pytest>=8.0"
-
-# הרצת התוכנית
-python main.py
-
-# הרצת הבדיקות
-python -m pytest -v
-```
-
-> **הערה (Windows):** חלק מהנתונים בתוך `data/sample_data.jsonl` וטקסטי
-> התצוגה של `Status`/`Priority` הם בעברית. אם מסוף Windows (PowerShell/cmd)
-> זורק `UnicodeEncodeError` בזמן ההדפסה, יש להריץ עם קידוד UTF-8 מפורש:
-> `py -X utf8 main.py`.
-
-התוכנית מריצה ברצף אחד את כל ההדגמות: טעינת הנתונים מ-`data/sample_data.jsonl`,
-מודל ה-OOP, מבני הנתונים והמיון, תור FIFO ותור עדיפויות (`heapq`), האיטרטורים
-והגנרטורים, הצינור העצלן, ומנהל ההקשר.
 
 ---
 
