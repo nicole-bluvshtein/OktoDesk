@@ -103,3 +103,18 @@ ones the tickets use; no real personal data.
 **What we checked:** loaded the file through `load_knowledge_base` — 8 entries,
 0 skipped. Compared entries 1–3 with tickets 5, 7 and 12 by hand (solution text
 and dates). Kept as a test: `test_real_knowledge_base_loads_completely`.
+
+## User data (Stage 2)
+
+Claude (via Claude Code) drafted the 20 records in `data/users.jsonl`: 16
+employees, 3 technicians and 1 IT manager.
+
+**Prompt (summary):** one record per person referenced by the tickets — every
+`opened_by` (`emp-101`–`emp-116`) and every `assigned_to` (`tech-201`–`tech-203`)
+— plus one manager. Invented names, `example.com` emails, no real personal data.
+No `assigned_tickets` in the file: they are derived from the tickets.
+
+**What we checked:** every record builds through `create_user` (16 `User`, 3
+`Technician`, 1 `ITManager`); loaded through `load_users` with 0 skipped. Kept as
+tests: `test_real_users_file_loads_completely` and
+`test_every_ticket_person_exists_in_the_users_file`.

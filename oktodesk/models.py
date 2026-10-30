@@ -82,6 +82,9 @@ class User:
     def describe_capabilities(self):
         return f"{self.name} can open tickets and view their own tickets."
 
+    def can_export(self):
+        return False
+
     def __str__(self):
         return f"User({self.name}, {self.role}, {self.department})"
 
@@ -159,6 +162,9 @@ class ITManager(Technician):
         export = "can" if self.can_export_reports else "cannot"
         return f"{base} As an IT manager, {self.name} also oversees {count} technician(s), tracks SLA compliance, and {export} export reports."
 
+    def can_export(self):
+        return self.can_export_reports
+
     def __str__(self):
         return f"ITManager({self.name}, manages {len(self.managed_technicians)} technician(s))"
 
@@ -175,7 +181,8 @@ class Ticket:
     def __init__(self, ticket_id, title, description, category, priority, status,
                  opened_by, assigned_to=None, created_at=None, updated_at=None,
                  closed_at=None, solution=None, activity_log=None,
-                 waiting_since=None, waiting_hours=0.0):
+                 waiting_since=None, waiting_hours=0.0,
+                 affected_product=None, linked_cves=None, vulnerability_check=None):
         self.ticket_id = ticket_id
         self.title = title
         self.description = description
@@ -192,6 +199,9 @@ class Ticket:
         self.closed_at = closed_at
         self.solution = solution
         self.activity_log = list(activity_log) if activity_log else []
+        self.affected_product = affected_product
+        self.linked_cves = list(linked_cves) if linked_cves else []
+        self.vulnerability_check = vulnerability_check
 
     @property
     def title(self):
@@ -213,6 +223,13 @@ class Ticket:
     def title_words(self):
         return {word.strip(".,:;!?()").lower() for word in self.title.split()
                 if len(word) > 2}
+
+    @property
+    def search_words(self):
+        words = set(self.title_words)
+        if self.affected_product:
+            words.add(self.affected_product.lower())
+        return words
 
     @property
     def priority(self):
@@ -280,6 +297,9 @@ class Ticket:
             activity_log=data.get("activity_log", []),
             waiting_since=waiting_since,
             waiting_hours=data.get("waiting_hours", 0.0),
+            affected_product=data.get("affected_product"),
+            linked_cves=data.get("linked_cves", []),
+            vulnerability_check=data.get("vulnerability_check"),
         )
 
     def __str__(self):
@@ -391,6 +411,12 @@ class Ticket:
     @property
     def is_overdue(self):
         return self.is_overdue_at(datetime.now())
+
+    def raise_priority_to(self, priority, performed_by):
+        if _PRIORITY_RANK[priority] < self.priority_rank:
+            self.update_details(performed_by, priority=priority)
+            return True
+        return False
 
     def __lt__(self, other):
         return (self.priority_rank, self.created_at) < (other.priority_rank, other.created_at)
