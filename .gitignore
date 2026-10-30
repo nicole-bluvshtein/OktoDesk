@@ -5,3 +5,4 @@ __pycache__/
 .vscode/
 .env
 git_log.txt
+*.egg-info/

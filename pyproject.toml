@@ -12,6 +12,9 @@ dev = [
     "pytest>=8.0",
 ]
 
+[tool.setuptools]
+packages = ["oktodesk"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

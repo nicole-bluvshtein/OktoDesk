@@ -180,6 +180,22 @@ def test_three_connection_errors_stop_after_exactly_three_calls(config, sleep):
     assert sleep.call_count == 2
 
 
+@pytest.mark.parametrize("session_result, error_cls", [
+    (requests.Timeout("slow"), ServiceUnavailableError),
+    (http_error_response(503), ServiceHTTPError),
+    (ok_response({"totalResults": 1}), InvalidServiceDataError),
+])
+def test_every_failure_names_its_product(config, sleep, session_result, error_cls):
+    session = Mock()
+    if isinstance(session_result, Exception):
+        session.get.side_effect = session_result
+    else:
+        session.get.return_value = session_result
+    with pytest.raises(error_cls) as raised:
+        make_client(session, sleep, config).find_recent_critical("zoom", now=NOW)
+    assert raised.value.product == "zoom"
+
+
 def test_every_service_error_shares_one_base_class():
     for error_cls in (ServiceUnavailableError, ServiceHTTPError, InvalidServiceDataError):
         assert issubclass(error_cls, VulnerabilityServiceError)

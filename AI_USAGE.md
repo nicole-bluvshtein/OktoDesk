@@ -118,3 +118,55 @@ No `assigned_tickets` in the file: they are derived from the tickets.
 `Technician`, 1 `ITManager`); loaded through `load_users` with 0 skipped. Kept as
 tests: `test_real_users_file_loads_completely` and
 `test_every_ticket_person_exists_in_the_users_file`.
+
+## Amit's track (Stage 2: steps 3.2, 4.1, 5.1 and README parts)
+
+Claude (via Claude Code) wrote the code and tests for the observers
+(`observers.py`), the NVD client (`api_client.py`, `config.py`,
+`.env.example`), the async security sweep (`async_processing.py`,
+`data/simulated_cves.json`) and README Stage 2 parts 2–4.
+
+**Plan first, no code.** Before any change, the AI read the whole repository
+and the approved Stage 2 plan, then asked questions instead of assuming. Every
+open design choice was put to Amit as a question with options, and Amit
+decided:
+
+| Question | Decision |
+|---|---|
+| Which id does a new KB entry get when a ticket closes? | Highest existing id + 1 (no collision if an entry was removed) |
+| The ticket fields for product and CVEs don't exist until step 4.2 | Leave them out of 3.2; Nicole adds the keywords in 4.2 |
+| T18 needs `TicketService`, which is Nicole's step 3.3 | Unit tests on the observers now; the end-to-end test in 3.3 |
+| Load a `.env` file automatically (extra package `python-dotenv`)? | No: variables are set in the shell, no extra dependency, because NVD needs no key |
+| If one product fails during the sweep, does the whole sweep fail? | No: that product's result is the error ("unknown"), the others still count |
+| Real-looking or clearly fake CVE ids in the simulated data? | Clearly fake (`CVE-SIM-0001`), so simulated data can't pass as real |
+
+**What we checked**
+- Every step: the full test suite, `pyflakes` and `main.py`, not only the new
+  tests.
+- **Real response shape.** The NVD client was tested with mocked sessions,
+  so one real request (`chrome`, 29 Oct 2026) was made to confirm the parser
+  matches the real API, not just our own fakes. It returned 5 critical CVEs.
+  This was a check, not the live proof for the README.
+- **Install command.** After adding the package setting to `pyproject.toml`,
+  `pip install -e ".[dev]"` was re-run to confirm it now succeeds.
+- **Facts in the README.** Statements in the README parts were checked against
+  the code (for example, that the vulnerability report really lists failed
+  checks) before being written.
+
+**What we fixed**
+- `.env.example` first said "Copy to .env", which became wrong once we decided
+  not to load `.env`. Corrected in a follow-up commit.
+- **Integration bug between 5.1 and 4.2.** Each side's tests passed alone, but
+  feeding the *real* sweep output into `apply_vulnerability_reports` crashed
+  (`AttributeError: 'ServiceUnavailableError' object has no attribute
+  'product'`): a failed product's slot held an error that didn't say which
+  product failed. Fixed on both sides: service errors now carry the product,
+  and `apply_vulnerability_reports` marks only that product's tickets
+  "unknown". The two new service tests were run against the **old**
+  `services.py` first and failed, which proves they catch the bug; they pass
+  with the fix. No expected result was changed to make a test pass.
+
+**Simulated data.** `data/simulated_cves.json` was drafted by the AI to our
+rules: three products that finish in a different order from the input, one
+product that always fails, and only `CVE-SIM-` ids. A test
+(`test_shipped_simulated_data_uses_only_fake_ids`) keeps it that way.
