@@ -29,6 +29,14 @@ class InvalidServiceDataError(VulnerabilityServiceError):
     pass
 
 
+class MalformedJSONError(InvalidServiceDataError):
+    pass
+
+
+class UnexpectedStructureError(InvalidServiceDataError):
+    pass
+
+
 @dataclass(frozen=True)
 class Vulnerability:
     cve_id: str
@@ -109,17 +117,17 @@ class NvdClient:
             return response.json()
         except ValueError as error:
             logger.error("NVD response was not valid JSON")
-            raise InvalidServiceDataError("NVD response was not valid JSON") from error
+            raise MalformedJSONError("NVD response was not valid JSON") from error
 
     def _parse_report(self, product, payload, now):
         if not isinstance(payload, dict):
-            raise InvalidServiceDataError("NVD response is not a JSON object")
+            raise UnexpectedStructureError("NVD response is not a JSON object")
         total = payload.get("totalResults")
         items = payload.get("vulnerabilities")
         if not isinstance(total, int) or total < 0:
-            raise InvalidServiceDataError("NVD response has no valid 'totalResults'")
+            raise UnexpectedStructureError("NVD response has no valid 'totalResults'")
         if not isinstance(items, list):
-            raise InvalidServiceDataError("NVD response has no 'vulnerabilities' list")
+            raise UnexpectedStructureError("NVD response has no 'vulnerabilities' list")
         vulnerabilities = tuple(self._parse_vulnerability(item) for item in items)
         logger.info("NVD found %d critical CVE(s) for %r", total, product)
         return VulnerabilityReport(product, total, vulnerabilities, now)
@@ -135,9 +143,9 @@ class NvdClient:
             score = float(cvss["baseScore"])
             published = datetime.fromisoformat(cve["published"])
         except (KeyError, IndexError, TypeError, ValueError) as error:
-            raise InvalidServiceDataError(f"NVD CVE record is missing a required field: {error}") from error
+            raise UnexpectedStructureError(f"NVD CVE record is missing a required field: {error}") from error
         if not isinstance(cve_id, str) or not cve_id.startswith("CVE-"):
-            raise InvalidServiceDataError(f"NVD CVE record has an invalid id: {cve_id!r}")
+            raise UnexpectedStructureError(f"NVD CVE record has an invalid id: {cve_id!r}")
         if not 0.0 <= score <= 10.0:
-            raise InvalidServiceDataError(f"{cve_id} has an out-of-range score: {score}")
+            raise UnexpectedStructureError(f"{cve_id} has an out-of-range score: {score}")
         return Vulnerability(cve_id, severity, score, published)

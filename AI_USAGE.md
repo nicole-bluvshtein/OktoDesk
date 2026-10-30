@@ -1,11 +1,12 @@
-# AI Usage — synthetic ticket data
+# AI Usage
 
 ## Tool
 
-Claude (via Claude Code) was used to draft the synthetic ticket
-records in `data/sample_data.jsonl`. The AI generated the *data* only — every
-class, method, and validation rule in `oktodesk/` was written and reviewed
-line by line during this session, not generated in bulk and accepted as-is.
+Claude (via Claude Code) was used to draft the synthetic ticket records in
+`data/sample_data.jsonl`, and to plan, write and review code. The code in
+`oktodesk/` was written together with the AI: it proposed and wrote code
+alongside us, and every piece was reviewed both by the AI and by us before it was
+committed.
 
 ## Prompt
 
@@ -170,3 +171,71 @@ decided:
 rules: three products that finish in a different order from the input, one
 product that always fails, and only `CVE-SIM-` ids. A test
 (`test_shipped_simulated_data_uses_only_fake_ids`) keeps it that way.
+
+## Nicole's track (Stage 2: Phases 0–2 with Amit, then 3.1, 3.3, 4.2, 5.2, 6.1 and README parts)
+
+Claude (via Claude Code) proposed the design and code for each step, and Nicole
+approved every step before it was written. Nicole typed a large part of the code
+herself — for example `factories.py`, `services.py`, `threaded_processing.py`,
+`reports.py` and `main.py` — and committed and merged each step herself.
+
+**Plan first, no code.** Before any change, we asked for an audit of the Stage 1
+feedback against the instructions, then one plan for the fixes and every Stage 2
+requirement, with test cases T1–T36. We reviewed and approved it before any code
+changed.
+
+**Expected results we defined ourselves (section 7.3)**
+
+*T11 — SLA hours.* Our rules: inside the SLA the value is negative (hours left);
+overdue means strictly more than the target; a closed ticket is measured up to
+`closed_at` and is never overdue; the clock stops while waiting for the employee.
+At a fixed "now" of 17 Sep 2026 12:00:
+
+| Ticket | Overdue | Hours over SLA |
+|---|---|---|
+| CRITICAL, open, opened 3 h ago | yes | 2 |
+| LOW, open, opened 4 h ago | no | −20 |
+| HIGH, open, opened 8 h ago | yes | 4 |
+| CRITICAL, opened 0.5 h ago, closed now | no | −0.5 |
+| MEDIUM, waiting since now, opened 4 h ago | no | −4 |
+| HIGH, open, opened exactly 4 h ago | no | 0 |
+
+Row 3 was first written as 0.1; when the AI pointed out that row 1 counted in
+hours, we clarified it to 4 hours.
+
+*T12 — SLA breach report.* For six tickets, we decided which appear, their hours
+over and their order: #21 CRITICAL 4 h, #22 HIGH 2 h, #26 LOW 6 h. We ordered them
+by priority, then by more hours over — not "most overdue first" as the plan first
+said. The plan, the code and a tie-break test follow our rule.
+
+**Decisions**
+
+| Question | Decision |
+|---|---|
+| Factory: `if/elif` or a role→class dict? | Dict: a new role is one line |
+| Can a technician update status? (the README says yes, the contract didn't) | Yes, but never to CLOSED; closing goes through `close()` |
+| How many CVEs to link? | The top 3 by score |
+| A vulnerable product and a CRITICAL ticket? | At least HIGH; CRITICAL stays CRITICAL |
+| A later sweep says "clear"? | Never lower automatically; a person decides |
+| How to notify? | CVE ids in the "ticket opened" message |
+| Sweep results that mix reports and errors needed `isinstance` | Replaced with `SweepResult(product, report, error)` |
+| Bad JSON and wrong structure shared one error class | Split into `MalformedJSONError` and `UnexpectedStructureError` |
+| Review before merging solo branches? | Not required; we read each other's merged code |
+
+**What we checked**
+- After every step: the full test suite, `pyflakes` and `main.py`, not only the new tests.
+- The new tests failed first, for the right reason (TDD Red in 2.3, and T11 before `hours_over_sla` existed).
+- Amit's branches were merged into a separate copy first and the full suite run there before merging into `main`.
+- KB entries 1–3 compared by hand with tickets 5, 7 and 12.
+- Every statement in our README parts checked against the code; then an audit of every requirement in the plan, with a file and line for each.
+
+**What we fixed after review**
+- Waiting tickets loaded from the file had no `waiting_since` when `updated_at` was missing, so the SLA clock never paused. Found by a manual check; fixed and covered by a test.
+- Mistakes while typing code, caught by `pyflakes` and the tests: duplicated imports, a function pasted into the wrong module, and imports in `main.py` replaced instead of added.
+- The simulated data used "vpn client" while the tickets use "FortiClient", so the offline failure case never appeared. A product without simulated data was reported "clear"; it is now "unknown".
+- The README still promised a dashboard in one table; corrected to the export report.
+
+**An expected result changed on purpose.** Amit's test T30 expected a product with
+no simulated data to give an empty report. We decided that no data means "unknown",
+never "clear", so the rule changed first and the test follows the new rule. No
+expected result was changed only to make a test pass.

@@ -28,13 +28,13 @@ def stage1_demos():
 
     print()
     print("=== OOP demo ===")
-    employee = User("u1", "Dana Cohen", "dana@company.com", "Finance")
+    employee = User("u1", "Dana Cohen", "dana@example.com", "Finance")
     technician = Technician(
-        "u5", "Roi Katz", "roi@company.com", "IT",
+        "u5", "Roi Katz", "roi@example.com", "IT",
         technician_id="tech-201", expertise_areas=["network", "hardware"]
     )
     manager = ITManager(
-        "u9", "Tal Avraham", "tal@company.com", "IT",
+        "u9", "Tal Avraham", "tal@example.com", "IT",
         technician_id="tech-mgr", expertise_areas=["security"],
         managed_technicians=["tech-201", "tech-202"]
     )
