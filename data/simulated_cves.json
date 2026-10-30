@@ -17,7 +17,7 @@
       {"cve_id": "CVE-SIM-0003", "severity": "CRITICAL", "score": 9.6, "published": "2026-08-20T11:00:00"}
     ]
   },
-  "vpn client": {
+  "forticlient": {
     "delay_seconds": 0.05,
     "fail": true,
     "vulnerabilities": []

@@ -1,10 +1,19 @@
 import asyncio
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from oktodesk.api_client import (
     ServiceUnavailableError, Vulnerability, VulnerabilityReport, VulnerabilityServiceError,
 )
+
+
+@dataclass(frozen=True)
+class SweepResult:
+    # one slot per product: report when the check succeeded, error when it failed
+    product: str
+    report: VulnerabilityReport = None
+    error: VulnerabilityServiceError = None
 
 
 def load_simulated_cves(path):
@@ -16,7 +25,11 @@ def load_simulated_cves(path):
 def make_simulated_fetch(simulated, delay_scale=1.0, now=None):
     # SIMULATED: local data and asyncio.sleep stand in for the network; this does not replace NvdClient
     async def fetch(product):
-        record = simulated.get(product.lower(), {"delay_seconds": 0, "vulnerabilities": []})
+        record = simulated.get(product.lower())
+        if record is None:
+            # no simulated data is "we don't know", never "no vulnerabilities"
+            raise ServiceUnavailableError(f"[SIMULATED] no simulated data for {product!r}",
+                                          product=product)
         await asyncio.sleep(record["delay_seconds"] * delay_scale)
         if record.get("fail"):
             raise ServiceUnavailableError(f"[SIMULATED] service unavailable for {product!r}",
@@ -34,9 +47,9 @@ def make_simulated_fetch(simulated, delay_scale=1.0, now=None):
 async def _check_product(product, fetch):
     # one failed product becomes an "unknown" result in its own slot; the others still count
     try:
-        return await fetch(product)
+        return SweepResult(product, report=await fetch(product))
     except VulnerabilityServiceError as error:
-        return error
+        return SweepResult(product, error=error)
 
 
 async def collect_reports_sequential(products, fetch):
