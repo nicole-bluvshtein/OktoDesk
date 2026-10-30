@@ -1,12 +1,26 @@
 import itertools
+from datetime import datetime
+from pathlib import Path
 
-from oktodesk.repository import load_tickets
-from oktodesk.models import User, Technician, ITManager, Priority
 from oktodesk import processing as proc
-from oktodesk.iterators import TicketCollection, iter_open_tickets, open_ticket_id_pipeline
+from oktodesk import reports
 from oktodesk.context_managers import TicketWorkSession
+from oktodesk.iterators import TicketCollection, iter_open_tickets, open_ticket_id_pipeline
+from oktodesk.models import (
+    User, Technician, ITManager, Priority, Status,
+    EmailNotificationChannel, SlackNotificationChannel,
+)
+from oktodesk.observers import KnowledgeBaseRecorder, NotificationObserver
+from oktodesk.repository import (
+    load_tickets, load_knowledge_base, load_users, link_technicians_to_tickets,
+)
+from oktodesk.services import TicketService
+from oktodesk.threaded_processing import ThreadSafeTicketQueue
 
-def main():
+DEMO_NOW = datetime(2026, 9, 17, 18, 0)
+
+
+def stage1_demos():
     tickets_by_id, skipped = load_tickets("data/sample_data.jsonl")
     print(f"Loaded {len(tickets_by_id)} tickets, skipped {len(skipped)} rows")
     for line_number, reason in skipped:
@@ -20,7 +34,7 @@ def main():
         technician_id="tech-201", expertise_areas=["network", "hardware"]
     )
     manager = ITManager(
-        "u9", "Tal Avrahan", "tal@company.com", "IT",
+        "u9", "Tal Avraham", "tal@company.com", "IT",
         technician_id="tech-mgr", expertise_areas=["security"],
         managed_technicians=["tech-201", "tech-202"]
     )
@@ -58,6 +72,10 @@ def main():
     print("Top 3 by tuple key (priority_rank, created_at):")
     for t in proc.sort_by_priority_then_created_at(tickets)[:3]:
         print(" -",t)
+
+    print("Top 3 oldest first (sort_by_created_at):")
+    for t in proc.sort_by_created_at(tickets)[:3]:
+        print(" -", t)
 
     print()
     print("=== FIFO notification ===")
@@ -141,6 +159,83 @@ def main():
         print("caught:", exc)
     print("after failing session (rolled back):", failing_ticket.status,
           "| solution:", failing_ticket.solution, "| closed at:", failing_ticket.closed_at)
+
+def build_service(vulnerability_client=None):
+    tickets_by_id, _ = load_tickets("data/sample_data.jsonl")
+    kb_by_id, _ = load_knowledge_base("data/knowledge_base.jsonl")
+    users_by_id, _ = load_users("data/users.jsonl")
+    technicians_by_id = link_technicians_to_tickets(users_by_id, tickets_by_id)
+
+    kb_entries = list(kb_by_id.values())
+    notifier = NotificationObserver(proc.new_notification_queue(),
+                                    [EmailNotificationChannel(), SlackNotificationChannel()])
+    waiting = [t for t in tickets_by_id.values() if t.status == Status.OPEN and t.assigned_to is None]
+    service = TicketService(
+        tickets_by_id, kb_entries,
+        observers=[KnowledgeBaseRecorder(kb_entries), notifier],
+        queue=ThreadSafeTicketQueue(waiting),
+        vulnerability_client=vulnerability_client,
+    )
+    return service, users_by_id, technicians_by_id, notifier
+
+
+def service_demo():
+    print()
+    print("=== Stage 2: the ticket lifecycle through TicketService ===")
+    service, users_by_id, technicians_by_id, notifier = build_service()
+    print(f"Queue: {len(service.queue)} waiting tickets | KB: {len(service.kb_entries)} entries")
+
+    ticket = service.open_ticket("Printer jammed again", "Paper stuck in tray 2", "hardware",
+                                 Priority.MEDIUM, opened_by="emp-104", now=DEMO_NOW)
+    print("Opened:", ticket, "| queue now", len(service.queue))
+
+    top_match, see_also = service.suggest_solutions(ticket.ticket_id)
+    if top_match is not None:
+        print("Suggested solution:", top_match.title, "->", top_match.solution_description)
+        print("See also:", [entry.title for entry in see_also])
+
+    technician = technicians_by_id["tech-201"]
+    assigned = service.assign_next(technician)
+    print(f"{technician.name} takes the most urgent ticket:", assigned)
+
+    try:
+        service.close_ticket(assigned.ticket_id, technician.technician_id, "")
+    except ValueError as error:
+        print("Close refused:", error, "| KB entries still", len(service.kb_entries))
+
+    service.close_ticket(assigned.ticket_id, technician.technician_id,
+                         "Restarted the AC unit and booked the vendor to replace the compressor")
+    print("Closed:", assigned, "| KB entries now", len(service.kb_entries))
+    print("New KB entry:", service.kb_entries[-1])
+
+    print("Queued notifications, sent in order (FIFO):")
+    print(notifier.dispatch(), "notifications sent")
+    return service, users_by_id, technicians_by_id
+
+
+def reports_demo(service, users_by_id, technicians_by_id):
+    print()
+    print("=== SLA and workload reports ===")
+    tickets = list(service.tickets_by_id.values())
+    print(f"SLA breaches at {DEMO_NOW:%d %b %Y %H:%M} (by priority, then hours over):")
+    for ticket_id, priority, hours_over in reports.sla_breach_report(tickets, DEMO_NOW):
+        print(f" - #{ticket_id:<3} {priority.name:<8} {hours_over:>6} h over")
+    print("Open tickets per technician:", reports.workload_report(tickets))
+
+    manager = users_by_id["emp-300"]
+    path = Path("output") / "sla_report.json"
+    path.parent.mkdir(exist_ok=True)
+    reports.export_report(manager, tickets, DEMO_NOW, path)
+    print(f"{manager.name} exported the report to {path}")
+    try:
+        reports.export_report(technicians_by_id["tech-202"], tickets, DEMO_NOW, path)
+    except PermissionError as error:
+        print("Export refused:", error)
+
+def main():
+    stage1_demos()
+    service, users_by_id, technicians_by_id = service_demo()
+    reports_demo(service, users_by_id, technicians_by_id)
 
 if __name__ == "__main__":
     main()
