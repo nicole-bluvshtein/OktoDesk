@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from oktodesk.api_client import ServiceUnavailableError, VulnerabilityReport
+from oktodesk.api_client import ServiceUnavailableError
 from oktodesk.async_processing import (
     collect_reports_concurrent, collect_reports_sequential, load_simulated_cves,
     make_simulated_fetch,
@@ -46,8 +46,8 @@ def test_sequential_and_concurrent_match_in_input_order_though_finish_order_diff
     concurrent = asyncio.run(collect_reports_concurrent(PRODUCTS, tracked_fetch(concurrent_events)))
 
     assert concurrent == sequential
-    assert [report.product for report in concurrent] == PRODUCTS
-    assert [report.total for report in concurrent] == [1, 0, 1]
+    assert [result.product for result in concurrent] == PRODUCTS
+    assert [result.report.total for result in concurrent] == [1, 0, 1]
     finish_order = [product for kind, product in concurrent_events if kind == "end"]
     assert finish_order == ["outlook", "zoom", "chrome"]
 
@@ -67,21 +67,29 @@ def test_sequential_waits_for_each_check_before_the_next():
 # T30
 @pytest.mark.parametrize("collect", [collect_reports_sequential, collect_reports_concurrent])
 def test_exactly_one_result_per_product(collect):
-    products = ["chrome", "outlook", "zoom", "teams"]
+    products = ["chrome", "outlook", "zoom"]
     results = asyncio.run(collect(products, make_simulated_fetch(SIMULATED, now=NOW)))
-    assert len(results) == len(products)
-    assert all(isinstance(result, VulnerabilityReport) for result in results)
-    assert results[3].total == 0
+    assert [result.product for result in results] == products
+    assert all(result.report is not None and result.error is None for result in results)
+
+
+@pytest.mark.parametrize("collect", [collect_reports_sequential, collect_reports_concurrent])
+def test_product_without_simulated_data_is_unknown_not_clear(collect):
+    results = asyncio.run(collect(["teams"], make_simulated_fetch(SIMULATED, now=NOW)))
+    assert results[0].report is None
+    assert "no simulated data for 'teams'" in str(results[0].error)
 
 
 @pytest.mark.parametrize("collect", [collect_reports_sequential, collect_reports_concurrent])
 def test_one_failed_product_keeps_the_other_reports(collect):
     products = ["chrome", "vpn client", "zoom"]
     results = asyncio.run(collect(products, make_simulated_fetch(SIMULATED, now=NOW)))
-    assert isinstance(results[1], ServiceUnavailableError)
-    assert results[1].product == "vpn client"
-    assert "[SIMULATED]" in str(results[1])
-    assert [results[0].product, results[2].product] == ["chrome", "zoom"]
+    failed = results[1]
+    assert failed.product == "vpn client"
+    assert failed.report is None
+    assert isinstance(failed.error, ServiceUnavailableError)
+    assert "[SIMULATED]" in str(failed.error)
+    assert [results[0].report.product, results[2].report.product] == ["chrome", "zoom"]
 
 
 def test_unexpected_bug_is_not_hidden_as_unknown():

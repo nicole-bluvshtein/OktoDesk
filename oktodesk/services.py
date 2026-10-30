@@ -68,18 +68,18 @@ class TicketService:
         self._apply_report(ticket, report)
         return report
 
-    def apply_vulnerability_reports(self, reports):
-        # each item is a VulnerabilityReport, or the VulnerabilityServiceError of a product
-        # the sweep could not check: that product's tickets become "unknown", nothing else changes
-        for report in reports:
-            if isinstance(report, VulnerabilityServiceError):
-                logger.warning("Sweep could not check %r: %s", report.product, report)
-                for ticket in self._open_tickets_for(report.product):
-                    self._mark_unknown(ticket, report.product)
+    def apply_sweep_results(self, results):
+        # one SweepResult per product: a failed product's tickets become "unknown",
+        # nothing else about them changes
+        for result in results:
+            if result.report is None:
+                logger.warning("Sweep could not check %r: %s", result.product, result.error)
+                for ticket in self._open_tickets_for(result.product):
+                    self._mark_unknown(ticket, result.product)
                 continue
-            self._vulnerability_reports[report.product.lower()] = report
-            for ticket in self._open_tickets_for(report.product):
-                self._apply_report(ticket, report)
+            self._vulnerability_reports[result.product.lower()] = result.report
+            for ticket in self._open_tickets_for(result.product):
+                self._apply_report(ticket, result.report)
         self.queue.rebuild()
 
     def _open_tickets_for(self, product):
