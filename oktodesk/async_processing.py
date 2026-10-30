@@ -19,7 +19,8 @@ def make_simulated_fetch(simulated, delay_scale=1.0, now=None):
         record = simulated.get(product.lower(), {"delay_seconds": 0, "vulnerabilities": []})
         await asyncio.sleep(record["delay_seconds"] * delay_scale)
         if record.get("fail"):
-            raise ServiceUnavailableError(f"[SIMULATED] service unavailable for {product!r}")
+            raise ServiceUnavailableError(f"[SIMULATED] service unavailable for {product!r}",
+                                          product=product)
         vulnerabilities = tuple(
             Vulnerability(item["cve_id"], item["severity"], float(item["score"]),
                           datetime.fromisoformat(item["published"]))

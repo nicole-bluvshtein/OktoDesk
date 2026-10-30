@@ -62,21 +62,36 @@ class TicketService:
                 report = self.vulnerability_client.find_recent_critical(product)
             except VulnerabilityServiceError as error:
                 logger.warning("Vulnerability check for %r failed: %s", product, error)
-                ticket.vulnerability_check = "unknown"
-                ticket.add_log_entry("system", f"vulnerability check unknown for {product}")
+                self._mark_unknown(ticket, product)
                 return None
             self._vulnerability_reports[product.lower()] = report
         self._apply_report(ticket, report)
         return report
 
     def apply_vulnerability_reports(self, reports):
+        # each item is a VulnerabilityReport, or the VulnerabilityServiceError of a product
+        # the sweep could not check: that product's tickets become "unknown", nothing else changes
         for report in reports:
+            if isinstance(report, VulnerabilityServiceError):
+                logger.warning("Sweep could not check %r: %s", report.product, report)
+                for ticket in self._open_tickets_for(report.product):
+                    self._mark_unknown(ticket, report.product)
+                continue
             self._vulnerability_reports[report.product.lower()] = report
-            for ticket in self.tickets_by_id.values():
-                if (ticket.status != Status.CLOSED and ticket.affected_product
-                        and ticket.affected_product.lower() == report.product.lower()):
-                    self._apply_report(ticket, report)
+            for ticket in self._open_tickets_for(report.product):
+                self._apply_report(ticket, report)
         self.queue.rebuild()
+
+    def _open_tickets_for(self, product):
+        if product is None:
+            return []
+        return [ticket for ticket in self.tickets_by_id.values()
+                if ticket.status != Status.CLOSED and ticket.affected_product
+                and ticket.affected_product.lower() == product.lower()]
+
+    def _mark_unknown(self, ticket, product):
+        ticket.vulnerability_check = "unknown"
+        ticket.add_log_entry("system", f"vulnerability check unknown for {product}")
 
     def get_ticket(self, ticket_id):
         try:

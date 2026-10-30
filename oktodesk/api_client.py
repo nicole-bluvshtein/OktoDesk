@@ -10,7 +10,9 @@ _NVD_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.000"
 
 
 class VulnerabilityServiceError(Exception):
-    pass
+    def __init__(self, message, product=None):
+        super().__init__(message)
+        self.product = product
 
 
 class ServiceUnavailableError(VulnerabilityServiceError):
@@ -18,8 +20,8 @@ class ServiceUnavailableError(VulnerabilityServiceError):
 
 
 class ServiceHTTPError(VulnerabilityServiceError):
-    def __init__(self, message, status_code):
-        super().__init__(message)
+    def __init__(self, message, status_code, product=None):
+        super().__init__(message, product)
         self.status_code = status_code
 
 
@@ -55,8 +57,13 @@ class NvdClient:
 
     def find_recent_critical(self, product, now=None):
         now = now if now is not None else datetime.now(timezone.utc)
-        response = self._get_with_retry(product, self._query_params(product, now))
-        return self._parse_report(product, self._decode_json(response), now)
+        try:
+            response = self._get_with_retry(product, self._query_params(product, now))
+            return self._parse_report(product, self._decode_json(response), now)
+        except VulnerabilityServiceError as error:
+            # every failure names its product, so a sweep can mark the right tickets "unknown"
+            error.product = product
+            raise
 
     def _query_params(self, product, now):
         start = now - timedelta(days=self.config.lookback_days)

@@ -79,6 +79,7 @@ def test_one_failed_product_keeps_the_other_reports(collect):
     products = ["chrome", "vpn client", "zoom"]
     results = asyncio.run(collect(products, make_simulated_fetch(SIMULATED, now=NOW)))
     assert isinstance(results[1], ServiceUnavailableError)
+    assert results[1].product == "vpn client"
     assert "[SIMULATED]" in str(results[1])
     assert [results[0].product, results[2].product] == ["chrome", "zoom"]
 
