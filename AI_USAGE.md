@@ -204,13 +204,13 @@ the thread race to `main.py`, without changing Nicole's part 1.
   ticket. The failed-port run showed that is false after a failed check (a
   failure is not cached, so it is asked again). The message now states the rule.
 
-**Found in Nicole's review, not by the AI.** The AI's version of
-`vulnerability_demo` called the blocking `NvdClient` from inside an `async`
+**Found during the review of Amit's 6.2 branch before merging.** The AI's version
+of `vulnerability_demo` called the blocking `NvdClient` from inside an `async`
 function, which section 5.1 forbids (no blocking HTTP inside async code). All
-tests passed, and the AI's own audit missed it because it only searched
-`async_processing.py`. Nicole replaced it with a plain loop and added
-`test_live_client_is_never_called_inside_an_event_loop`, which fails on the old
-code. Lesson: a passing suite does not prove a rule that no test checks.
+tests passed, because no test checked that rule. The AI proposed a plain loop and a
+new test, `test_live_client_is_never_called_inside_an_event_loop`, that fails on
+the old code; Nicole approved and merged. Lesson: a passing suite does not prove a
+rule that no test checks.
 
 ### After the first-pass audit: T32
 
