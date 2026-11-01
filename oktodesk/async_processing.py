@@ -22,26 +22,48 @@ def load_simulated_cves(path):
     return {product: record for product, record in data.items() if not product.startswith("_")}
 
 
+def _simulated_record(simulated, product):
+    record = simulated.get(product.lower())
+    if record is None:
+        # no simulated data is "we don't know", never "no vulnerabilities"
+        raise ServiceUnavailableError(f"[SIMULATED] no simulated data for {product!r}",
+                                      product=product)
+    return record
+
+
+def _simulated_report(record, product, now):
+    if record.get("fail"):
+        raise ServiceUnavailableError(f"[SIMULATED] service unavailable for {product!r}",
+                                      product=product)
+    vulnerabilities = tuple(
+        Vulnerability(item["cve_id"], item["severity"], float(item["score"]),
+                      datetime.fromisoformat(item["published"]))
+        for item in record["vulnerabilities"]
+    )
+    checked_at = now if now is not None else datetime.now(timezone.utc)
+    return VulnerabilityReport(product, len(vulnerabilities), vulnerabilities, checked_at)
+
+
 def make_simulated_fetch(simulated, delay_scale=1.0, now=None):
     # SIMULATED: local data and asyncio.sleep stand in for the network; this does not replace NvdClient
     async def fetch(product):
-        record = simulated.get(product.lower())
-        if record is None:
-            # no simulated data is "we don't know", never "no vulnerabilities"
-            raise ServiceUnavailableError(f"[SIMULATED] no simulated data for {product!r}",
-                                          product=product)
+        record = _simulated_record(simulated, product)
         await asyncio.sleep(record["delay_seconds"] * delay_scale)
-        if record.get("fail"):
-            raise ServiceUnavailableError(f"[SIMULATED] service unavailable for {product!r}",
-                                          product=product)
-        vulnerabilities = tuple(
-            Vulnerability(item["cve_id"], item["severity"], float(item["score"]),
-                          datetime.fromisoformat(item["published"]))
-            for item in record["vulnerabilities"]
-        )
-        checked_at = now if now is not None else datetime.now(timezone.utc)
-        return VulnerabilityReport(product, len(vulnerabilities), vulnerabilities, checked_at)
+        return _simulated_report(record, product, now)
     return fetch
+
+
+class SimulatedVulnerabilityClient:
+    # SIMULATED: the same data and rules as the sweep, for the check made when a ticket opens;
+    # it answers like NvdClient so the service doesn't know which one it got. No event loop
+    # and no waiting: it is a regular call, safe to use from sync or async code
+    def __init__(self, simulated, now=None):
+        self._simulated = simulated
+        self._now = now
+
+    def find_recent_critical(self, product, now=None):
+        record = _simulated_record(self._simulated, product)
+        return _simulated_report(record, product, now if now is not None else self._now)
 
 
 async def _check_product(product, fetch):

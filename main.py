@@ -1,9 +1,21 @@
+import argparse
+import asyncio
 import itertools
+import logging
+import time
 from datetime import datetime
 from pathlib import Path
 
+import requests
+
 from oktodesk import processing as proc
 from oktodesk import reports
+from oktodesk.api_client import NvdClient
+from oktodesk.async_processing import (
+    SimulatedVulnerabilityClient, collect_reports_concurrent, collect_reports_sequential,
+    load_simulated_cves, make_simulated_fetch,
+)
+from oktodesk.config import NvdConfig
 from oktodesk.context_managers import TicketWorkSession
 from oktodesk.iterators import TicketCollection, iter_open_tickets, open_ticket_id_pipeline
 from oktodesk.models import (
@@ -15,9 +27,10 @@ from oktodesk.repository import (
     load_tickets, load_knowledge_base, load_users, link_technicians_to_tickets,
 )
 from oktodesk.services import TicketService
-from oktodesk.threaded_processing import ThreadSafeTicketQueue
+from oktodesk.threaded_processing import ThreadSafeTicketQueue, run_assignment_race
 
 DEMO_NOW = datetime(2026, 9, 17, 18, 0)
+SIMULATED_CVES = "data/simulated_cves.json"
 
 
 def stage1_demos():
@@ -232,10 +245,111 @@ def reports_demo(service, users_by_id, technicians_by_id):
     except PermissionError as error:
         print("Export refused:", error)
 
-def main():
+
+def make_vulnerability_client(live, config):
+    if live:
+        return NvdClient(requests.Session(), time.sleep, config), "[LIVE]"
+    return SimulatedVulnerabilityClient(load_simulated_cves(SIMULATED_CVES)), "[SIMULATED]"
+
+
+def vulnerability_demo(client, label):
+    print()
+    print(f"=== Stage 2: vulnerability check {label} ===")
+    service, _, _, _ = build_service(vulnerability_client=client)
+    open_tickets = [t for t in service.tickets_by_id.values()
+                    if t.status != Status.CLOSED and t.affected_product]
+    products = sorted({t.affected_product for t in open_tickets}, key=str.lower)
+
+    async def fetch(product):
+        # one product at a time through the chosen client; the gather comparison is the next demo
+        return client.find_recent_critical(product)
+
+    print(f"{label} Checking the products in open tickets:", ", ".join(products))
+    results = asyncio.run(collect_reports_sequential(products, fetch))
+    service.apply_sweep_results(results)
+    for result in results:
+        if result.report is None:
+            print(f"{label}  - {result.product}: unknown ({type(result.error).__name__})")
+        else:
+            cves = ", ".join(cve.cve_id for cve in result.report.vulnerabilities[:3]) or "none"
+            print(f"{label}  - {result.product}: {result.report.total} critical CVE(s): {cves}")
+
+    print(f"{label} Open tickets after the check:")
+    for ticket in open_tickets:
+        print(f"{label}  - #{ticket.ticket_id:<3} {ticket.affected_product:<12} "
+              f"{ticket.vulnerability_check:<10} priority {ticket.priority.name:<8} "
+              f"CVEs {ticket.linked_cves}")
+
+    ticket = service.open_ticket("Chrome crashes on the CRM site", "Tab crashes on every login",
+                                 "software", Priority.MEDIUM, opened_by="emp-107",
+                                 affected_product="Chrome", now=DEMO_NOW)
+    print(f"{label} New ticket #{ticket.ticket_id} for Chrome, opened as MEDIUM: "
+          f"{ticket.vulnerability_check}, priority {ticket.priority.name} "
+          f"(a result found earlier in this run is reused; a failed check is asked again)")
+    print(f"{label} Vulnerability report:", reports.vulnerability_report(
+        list(service.tickets_by_id.values())))
+
+
+def async_sweep_demo():
+    print()
+    print("=== Stage 2: security sweep, sequential vs gather [SIMULATED] ===")
+    simulated = load_simulated_cves(SIMULATED_CVES)
+    products = list(simulated)
+    print("[SIMULATED] Products in input order:", ", ".join(products))
+    for name, collect in (("sequential", collect_reports_sequential),
+                          ("gather", collect_reports_concurrent)):
+        finished = []
+        inner = make_simulated_fetch(simulated, now=DEMO_NOW)
+
+        async def fetch(product):
+            try:
+                return await inner(product)
+            finally:
+                finished.append(product)
+
+        started = time.perf_counter()
+        results = asyncio.run(collect(products, fetch))
+        elapsed = time.perf_counter() - started
+        summary = ", ".join(f"{r.product}={'unknown' if r.report is None else r.report.total}"
+                            for r in results)
+        print(f"[SIMULATED] {name:<10} {elapsed:.2f} s | finished: {', '.join(finished)}")
+        print(f"[SIMULATED] {'':<10} results in input order: {summary}")
+
+
+def thread_race_demo():
+    print()
+    print("=== Stage 2: technicians race for the last waiting ticket (Lock) ===")
+    service, _, technicians_by_id, _ = build_service()
+    first = technicians_by_id["tech-201"]
+    while len(service.queue) > 1:
+        service.assign_next(first)
+    technicians = list(technicians_by_id.values())
+    print(f"{first.name} took tickets until one was left; "
+          f"{len(technicians)} technicians now ask for it at the same moment")
+    results = run_assignment_race(service, technicians)
+    for technician_id, ticket in results.items():
+        print(f" - {technician_id}: {ticket if ticket is not None else 'nothing left'}")
+    winners = [ticket for ticket in results.values() if ticket is not None]
+    print("Exactly one technician got it:", len(winners) == 1,
+          "| queue now", len(service.queue))
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="OktoDesk demo")
+    parser.add_argument("--live", action="store_true",
+                        help="check vulnerabilities against the real NVD service "
+                             "(default: simulated data, no network or key)")
+    args = parser.parse_args(argv)
+    config = NvdConfig.from_env()
+    client, label = make_vulnerability_client(args.live or config.live, config)
+    logging.basicConfig(level=logging.WARNING, format=f"{label} %(levelname)s %(name)s: %(message)s")
+
     stage1_demos()
     service, users_by_id, technicians_by_id = service_demo()
     reports_demo(service, users_by_id, technicians_by_id)
+    vulnerability_demo(client, label)
+    async_sweep_demo()
+    thread_race_demo()
 
 if __name__ == "__main__":
     main()

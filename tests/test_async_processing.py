@@ -6,8 +6,8 @@ import pytest
 
 from oktodesk.api_client import ServiceUnavailableError
 from oktodesk.async_processing import (
-    collect_reports_concurrent, collect_reports_sequential, load_simulated_cves,
-    make_simulated_fetch,
+    SimulatedVulnerabilityClient, collect_reports_concurrent, collect_reports_sequential,
+    load_simulated_cves, make_simulated_fetch,
 )
 
 NOW = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
@@ -111,3 +111,21 @@ def test_shipped_simulated_data_uses_only_fake_ids():
     ids = [item["cve_id"] for record in data.values() for item in record["vulnerabilities"]]
     assert ids
     assert all(cve_id.startswith("CVE-SIM-") for cve_id in ids)
+
+
+def test_simulated_client_answers_like_nvd_client_without_waiting():
+    client = SimulatedVulnerabilityClient(SIMULATED, now=NOW)
+    report = client.find_recent_critical("Chrome")
+    assert report.product == "Chrome"
+    assert report.is_vulnerable
+    assert [cve.cve_id for cve in report.vulnerabilities] == ["CVE-SIM-0001"]
+    assert report.checked_at == NOW
+    assert not client.find_recent_critical("outlook").is_vulnerable
+
+
+@pytest.mark.parametrize("product", ["vpn client", "teams"])
+def test_simulated_client_failure_names_its_product(product):
+    with pytest.raises(ServiceUnavailableError) as raised:
+        SimulatedVulnerabilityClient(SIMULATED, now=NOW).find_recent_critical(product)
+    assert raised.value.product == product
+    assert "[SIMULATED]" in str(raised.value)
