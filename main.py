@@ -10,10 +10,10 @@ import requests
 
 from oktodesk import processing as proc
 from oktodesk import reports
-from oktodesk.api_client import NvdClient
+from oktodesk.api_client import NvdClient, VulnerabilityServiceError
 from oktodesk.async_processing import (
-    SimulatedVulnerabilityClient, collect_reports_concurrent, collect_reports_sequential,
-    load_simulated_cves, make_simulated_fetch,
+    SimulatedVulnerabilityClient, SweepResult, collect_reports_concurrent,
+    collect_reports_sequential, load_simulated_cves, make_simulated_fetch,
 )
 from oktodesk.config import NvdConfig
 from oktodesk.context_managers import TicketWorkSession
@@ -260,12 +260,15 @@ def vulnerability_demo(client, label):
                     if t.status != Status.CLOSED and t.affected_product]
     products = sorted({t.affected_product for t in open_tickets}, key=str.lower)
 
-    async def fetch(product):
-        # one product at a time through the chosen client; the gather comparison is the next demo
-        return client.find_recent_critical(product)
-
+    # a plain loop, not async: with --live the client blocks on HTTP and on its retry
+    # waits, which must never run inside an event loop (section 5.1)
     print(f"{label} Checking the products in open tickets:", ", ".join(products))
-    results = asyncio.run(collect_reports_sequential(products, fetch))
+    results = []
+    for product in products:
+        try:
+            results.append(SweepResult(product, report=client.find_recent_critical(product)))
+        except VulnerabilityServiceError as error:
+            results.append(SweepResult(product, error=error))
     service.apply_sweep_results(results)
     for result in results:
         if result.report is None:
