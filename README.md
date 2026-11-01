@@ -368,7 +368,8 @@ ITManager ─────────── מנהל ─────────
 
 - **`__enter__`** — מסרב לפתוח מפגש על טיקט סגור (`ValueError`). אחרת שומר
   תמונת מצב (`_snapshot`) של כל השדות שהמפגש עשוי לשנות — כותרת, תיאור,
-  דחיפות, סטטוס, טכנאי משויך, פתרון, `closed_at` ו-`updated_at` — משנה את
+  דחיפות, סטטוס, טכנאי משויך, פתרון, `closed_at`, `updated_at` ושעון ההמתנה
+  (`waiting_since`, `waiting_hours`) — משנה את
   הסטטוס ל-`בטיפול`, מתעד ביומן הפעילות ומחזיר את הטיקט עצמו
   (`with TicketWorkSession(ticket, performed_by) as t:`).
 - **`__exit__` בסיום תקין** — משאיר את כל השינויים שבוצעו בבלוק (למשל
@@ -405,7 +406,8 @@ ITManager ─────────── מנהל ─────────
 - דוח SLA ועומס עם שעון שנעצר בהמתנה למידע; ייצוא רק למנהל מורשה.
 - טעינת משתמשים מקובץ, כל אחד כמחלקה הנכונה לפי תפקידו.
 - סריקת אבטחה: בדיקה מחודשת של כל התוכנות שמופיעות בטיקטים פתוחים, שמעדכנת את
-  סימון הפגיעויות ואת סדר התור; תוכנה שהבדיקה שלה נכשלה מסומנת "לא ידוע".
+  סימון הפגיעויות ואת סדר התור; טיקט של תוכנה שהבדיקה שלה נכשלה מסומן "לא ידוע",
+  אלא אם כבר יש לו תוצאה קודמת — אז היא נשמרת.
 - שיוך בטוח כשכמה טכנאים מבקשים את הטיקט הבא באותו רגע — כל טיקט מגיע לטכנאי אחד בלבד.
 
 ### 2. איך מריצים
@@ -535,8 +537,11 @@ OktoDesk/
   תוכנה (`create_task`) לפני האיסוף ב-`gather`. בשתיהן מתקבלת תוצאה אחת לכל
   תוכנה, לפי סדר הקלט, גם כשסדר הסיום שונה. כל תוצאה היא `SweepResult` — דוח, או
   השגיאה של תוכנה שלא נבדקה — והאחרות ממשיכות; תוכנה בלי נתונים מדומים נחשבת "לא
-  ידוע", לעולם לא "נקי". `apply_sweep_results` מסמן את הטיקטים של תוכנה שנכשלה
-  "לא ידוע", מעדכן את השאר ובונה מחדש את התור כדי שדחיפות שעלתה תשפיע על הסדר.
+  ידוע", לעולם לא "נקי". `apply_sweep_results` מסמן "לא ידוע" טיקטים של תוכנה
+  שנכשלה ועוד לא נבדקו; טיקט שכבר יש לו תוצאה שומר אותה (בדיקה חוזרת שנכשלה לא
+  מסתירה סיכון ידוע) ונרשמת על כך שורה ביומן. את השאר הוא מעדכן, ובונה מחדש את
+  התור כדי שדחיפות שעלתה תשפיע על הסדר. ב-`main.py` תוצאות ה-`gather` מוזנות
+  לשירות, והפלט מציג את סדר התור לפני הסריקה ואחריה.
 - **משאב משותף ו-Lock (`threaded_processing.py`)** — המשאב הוא תור הטיקטים של
   השירות. בלי נעילה, שני טכנאים יכולים לבדוק "נשאר טיקט?" באותו רגע, שניהם רואים
   "כן", הראשון לוקח — והשני מנסה לקחת מתור ריק (`IndexError`) או מקבל את אותו
@@ -545,8 +550,20 @@ OktoDesk/
 
 ### 5. הוכחות שהמערכת עובדת
 
-- **בדיקות:** `python -m pytest -q` — `200 passed` (1 בנובמבר 2026), ללא רשת, ללא
-  מפתח וללא המתנות Retry אמיתיות.
+- **בדיקות:** `python -m pytest -q` — `203 passed` (1 בנובמבר 2026), ללא רשת, ללא
+  מפתח וללא המתנות Retry אמיתיות. היכן נמצאת כל דרישה:
+
+  | דרישה | בדיקה |
+  |---|---|
+  | התנהגויות שלב 1 | `test_models.py`, `test_processing.py`, `test_repository.py`, `test_context_managers.py`, `test_reports.py` |
+  | Factory ו-Observer | `test_factories.py`, `test_observers.py` |
+  | שירות חיצוני: הצלחה / Timeout / שגיאת HTTP / שדה חסר | `test_api_client.py`: `test_valid_response_becomes_report_and_request_has_params_and_timeout`, `test_timeout_on_every_attempt_ends_in_service_unavailable`, `test_http_error_raises_service_http_error_and_is_tried_once`, `test_bad_structure_raises_invalid_data_and_is_not_retried` |
+  | Retry: הצלחה אחרי כשל זמני / עצירה אחרי 3 ניסיונות | `test_timeout_timeout_then_success_returns_data_after_3_calls_and_2_waits`, `test_three_connection_errors_stop_after_exactly_three_calls` |
+  | החלטת הפגיעויות והתגובה לכשל | `test_vulnerability_decision.py` |
+  | איסוף אסינכרוני | `test_async_processing.py`: `test_sequential_and_concurrent_match_in_input_order_though_finish_order_differs` |
+  | Threads ו-Lock | `test_threaded_processing.py`: `test_last_ticket_goes_to_exactly_one_technician` |
+  | תהליך משולב (לקוח, החלטה, תור, טכנאי, סגירה, KB, הודעות, דוח) | `test_vulnerability_decision.py`: `test_vulnerable_ticket_full_flow_across_components` |
+  | הרצת ההדגמה: ללא רשת כברירת מחדל, `--live` מסומן | `test_main.py` |
 - **ריצה מול השירות האמיתי** — `python main.py --live`, 1 בנובמבר 2026, 18:48 (שעון
   מקומי), ללא מפתח API. בקשת GET אחת לכל תוכנה ל-NVD CVE API 2.0 עם
   `keywordSearch=<התוכנה>`, `cvssV3Severity=CRITICAL`, `pubStartDate`/`pubEndDate`

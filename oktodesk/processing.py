@@ -155,5 +155,9 @@ class TicketQueue:
     def rebuild(self):
         heapq.heapify(self._heap)
 
+    def in_order(self):
+        # a sorted copy: shows the order without taking anything out of the queue
+        return sorted(self._heap)
+
     def __len__(self):
         return len(self._heap)

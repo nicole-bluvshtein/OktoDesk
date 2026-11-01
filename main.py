@@ -62,7 +62,7 @@ def stage1_demos():
     print()
     print("Polymorphic describe_capabilities() over a mixed list:")
     people = [employee, technician, manager]
-    for person in people :
+    for person in people:
         print("-", person.describe_capabilities())
 
     print()
@@ -80,11 +80,11 @@ def stage1_demos():
     print()
     print("Top 3 named-function urgency score:")
     for t in proc.sort_by_urgency_score(tickets)[:3]:
-        print(" -",t)
+        print(" -", t)
 
     print("Top 3 by tuple key (priority_rank, created_at):")
     for t in proc.sort_by_priority_then_created_at(tickets)[:3]:
-        print(" -",t)
+        print(" -", t)
 
     print("Top 3 oldest first (sort_by_created_at):")
     for t in proc.sort_by_created_at(tickets)[:3]:
@@ -173,6 +173,7 @@ def stage1_demos():
     print("after failing session (rolled back):", failing_ticket.status,
           "| solution:", failing_ticket.solution, "| closed at:", failing_ticket.closed_at)
 
+
 def build_service(vulnerability_client=None):
     tickets_by_id, _ = load_tickets("data/sample_data.jsonl")
     kb_by_id, _ = load_knowledge_base("data/knowledge_base.jsonl")
@@ -252,12 +253,23 @@ def make_vulnerability_client(live, config):
     return SimulatedVulnerabilityClient(load_simulated_cves(SIMULATED_CVES)), "[SIMULATED]"
 
 
+def open_product_tickets(service):
+    return [t for t in service.tickets_by_id.values()
+            if t.status != Status.CLOSED and t.affected_product]
+
+
+def print_checked_tickets(tickets, label):
+    for ticket in tickets:
+        print(f"{label}  - #{ticket.ticket_id:<3} {ticket.affected_product:<12} "
+              f"{ticket.vulnerability_check:<10} priority {ticket.priority.name:<8} "
+              f"CVEs {ticket.linked_cves}")
+
+
 def vulnerability_demo(client, label):
     print()
     print(f"=== Stage 2: vulnerability check {label} ===")
     service, _, _, _ = build_service(vulnerability_client=client)
-    open_tickets = [t for t in service.tickets_by_id.values()
-                    if t.status != Status.CLOSED and t.affected_product]
+    open_tickets = open_product_tickets(service)
     products = sorted({t.affected_product for t in open_tickets}, key=str.lower)
 
     # a plain loop, not async: with --live the client blocks on HTTP and on its retry
@@ -278,10 +290,7 @@ def vulnerability_demo(client, label):
             print(f"{label}  - {result.product}: {result.report.total} critical CVE(s): {cves}")
 
     print(f"{label} Open tickets after the check:")
-    for ticket in open_tickets:
-        print(f"{label}  - #{ticket.ticket_id:<3} {ticket.affected_product:<12} "
-              f"{ticket.vulnerability_check:<10} priority {ticket.priority.name:<8} "
-              f"CVEs {ticket.linked_cves}")
+    print_checked_tickets(open_tickets, label)
 
     ticket = service.open_ticket("Chrome crashes on the CRM site", "Tab crashes on every login",
                                  "software", Priority.MEDIUM, opened_by="emp-107",
@@ -296,9 +305,13 @@ def vulnerability_demo(client, label):
 def async_sweep_demo():
     print()
     print("=== Stage 2: security sweep, sequential vs gather [SIMULATED] ===")
+    service, _, _, _ = build_service()
+    open_tickets = open_product_tickets(service)
     simulated = load_simulated_cves(SIMULATED_CVES)
-    products = list(simulated)
-    print("[SIMULATED] Products in input order:", ", ".join(products))
+    products = sorted({t.affected_product for t in open_tickets}, key=str.lower)
+    print("[SIMULATED] Products in open tickets, in input order:", ", ".join(products))
+    print("[SIMULATED] Queue before the sweep:",
+          [f"#{t.ticket_id} {t.priority.name}" for t in service.queue.in_order()])
     for name, collect in (("sequential", collect_reports_sequential),
                           ("gather", collect_reports_concurrent)):
         finished = []
@@ -317,6 +330,13 @@ def async_sweep_demo():
                             for r in results)
         print(f"[SIMULATED] {name:<10} {elapsed:.2f} s | finished: {', '.join(finished)}")
         print(f"[SIMULATED] {'':<10} results in input order: {summary}")
+
+    # the gather results update the tickets and reorder the queue
+    service.apply_sweep_results(results)
+    print("[SIMULATED] Open tickets after the sweep:")
+    print_checked_tickets(open_tickets, "[SIMULATED]")
+    print("[SIMULATED] Queue after the sweep:",
+          [f"#{t.ticket_id} {t.priority.name}" for t in service.queue.in_order()])
 
 
 def thread_race_demo():
@@ -353,6 +373,7 @@ def main(argv=None):
     vulnerability_demo(client, label)
     async_sweep_demo()
     thread_race_demo()
+
 
 if __name__ == "__main__":
     main()

@@ -69,13 +69,17 @@ class TicketService:
         return report
 
     def apply_sweep_results(self, results):
-        # one SweepResult per product: a failed product's tickets become "unknown",
-        # nothing else about them changes
+        # one SweepResult per product: a failed product's unchecked tickets become "unknown";
+        # a ticket with an earlier result keeps it, so a failure never hides a known risk
         for result in results:
             if result.report is None:
                 logger.warning("Sweep could not check %r: %s", result.product, result.error)
                 for ticket in self._open_tickets_for(result.product):
-                    self._mark_unknown(ticket, result.product)
+                    if ticket.vulnerability_check is None:
+                        self._mark_unknown(ticket, result.product)
+                    else:
+                        ticket.add_log_entry("system", f"vulnerability re-check failed for "
+                                                       f"{result.product}, last result kept")
                 continue
             self._vulnerability_reports[result.product.lower()] = result.report
             for ticket in self._open_tickets_for(result.product):

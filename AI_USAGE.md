@@ -158,11 +158,11 @@ decided:
 - `.env.example` first said "Copy to .env", which became wrong once we decided
   not to load `.env`. Corrected in a follow-up commit.
 - **Integration bug between 5.1 and 4.2.** Each side's tests passed alone, but
-  feeding the *real* sweep output into `apply_vulnerability_reports` crashed
+  feeding the *real* sweep output into `apply_vulnerability_reports` (now `apply_sweep_results`) crashed
   (`AttributeError: 'ServiceUnavailableError' object has no attribute
   'product'`): a failed product's slot held an error that didn't say which
   product failed. Fixed on both sides: service errors now carry the product,
-  and `apply_vulnerability_reports` marks only that product's tickets
+  and the service marks only that product's tickets
   "unknown". The two new service tests were run against the **old**
   `services.py` first and failed, which proves they catch the bug; they pass
   with the fix. No expected result was changed to make a test pass.
@@ -271,3 +271,24 @@ said. The plan, the code and a tie-break test follow our rule.
 no simulated data to give an empty report. We decided that no data means "unknown",
 never "clear", so the rule changed first and the test follows the new rule. No
 expected result was changed only to make a test pass.
+
+## Final review before submission
+
+**Prompt (summary):** review the whole project against the Stage 2 grading document,
+first the requirements, then every module, then how the parts fit together. No code
+changes until we approved the list of findings.
+
+**What the AI found and we fixed**
+- A failed re-check marked an already-vulnerable ticket "unknown" while it kept its
+  CVEs and HIGH priority, so the report hid a known risk. Now a ticket keeps its last
+  result and the failure is logged on the ticket. The new test
+  (`test_failed_recheck_keeps_the_last_known_result`) was run against the old code
+  first and failed.
+- The `gather` sweep in `main.py` only printed timings. Its results now go to
+  `apply_sweep_results`, and the demo shows the queue before and after
+  (`test_async_sweep_updates_tickets_and_reorders_the_queue`).
+- The README now maps each required test category to its test; small fixes to
+  `.gitignore`, the package version and code style.
+
+**What we checked:** the full suite (203 passed) and `main.py`. No existing expected
+result was changed.
