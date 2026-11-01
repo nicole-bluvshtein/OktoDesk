@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,10 +24,22 @@ def demo(monkeypatch):
 
         def find_recent_critical(self, product, now=None):
             requested.append(product)
+            inside_event_loop.append(_event_loop_running())
             return VulnerabilityReport(product, 0, (), NOW)
 
     monkeypatch.setattr(main, "NvdClient", FakeNvdClient)
     return requested
+
+
+def _event_loop_running():
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
+
+
+inside_event_loop = []
 
 
 def vulnerability_lines(output):
@@ -58,3 +71,11 @@ def test_live_run_labels_the_check_live_and_keeps_the_sweep_simulated(demo, caps
     assert all(line.startswith("[SIMULATED]") for line in sweep.strip().splitlines())
     # one request per product; the new Chrome ticket reuses this run's result
     assert sorted(demo) == ["Chrome", "FortiClient", "Outlook", "Zoom"]
+
+
+# R5.5 - the real client blocks on HTTP and retry waits, so it never runs inside an event loop
+def test_live_client_is_never_called_inside_an_event_loop(demo, capsys):
+    inside_event_loop.clear()
+    main.main(["--live"])
+    assert len(inside_event_loop) == 4
+    assert not any(inside_event_loop)
