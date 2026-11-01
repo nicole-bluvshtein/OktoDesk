@@ -159,3 +159,26 @@ def test_leaving_waiting_adds_the_paused_hours(make_ticket):
     ticket.update_details("tech-201", status=Status.IN_PROGRESS)
     assert ticket.waiting_since is None
     assert ticket.waiting_hours == pytest.approx(3, abs=0.01)
+
+
+LOGGED_TICKET = {
+    "ticket_id": 1, "title": "VPN drops", "description": "Disconnects hourly",
+    "category": "network", "priority": "HIGH", "status": "OPEN", "opened_by": "emp-101",
+    "created_at": "2026-09-16T08:00:00",
+}
+
+
+def test_log_times_from_file_become_datetimes_like_new_entries():
+    ticket = Ticket.from_dict({**LOGGED_TICKET, "activity_log": [
+        {"performed_by": "emp-101", "action": "Ticket opened", "timestamp": "2026-09-16T08:00:00"},
+    ]})
+    ticket.add_log_entry("tech-201", "looked at it")
+    assert ticket.activity_log[0]["timestamp"] == datetime(2026, 9, 16, 8, 0)
+    assert all(isinstance(entry["timestamp"], datetime) for entry in ticket.activity_log)
+
+
+def test_bad_log_time_is_rejected_like_any_other_bad_date():
+    with pytest.raises(ValueError):
+        Ticket.from_dict({**LOGGED_TICKET, "activity_log": [
+            {"performed_by": "emp-101", "action": "Ticket opened", "timestamp": "yesterday"},
+        ]})
