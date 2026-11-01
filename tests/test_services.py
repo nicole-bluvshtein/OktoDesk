@@ -105,3 +105,10 @@ def test_ticket_queue_rebuild_restores_order_after_priority_change(make_ticket):
     queue.rebuild()
     assert queue.pop_most_urgent() is low
     assert len(queue) == 1
+
+
+def test_ticket_queue_in_order_shows_the_order_without_removing(make_ticket):
+    low, critical = make_ticket(1, Priority.LOW), make_ticket(2, Priority.CRITICAL)
+    queue = proc.TicketQueue([low, critical])
+    assert queue.in_order() == [critical, low]
+    assert len(queue) == 2

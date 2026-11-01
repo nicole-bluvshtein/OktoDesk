@@ -20,6 +20,10 @@ class ThreadSafeTicketQueue(TicketQueue):
         with self._lock:
             super().rebuild()
 
+    def in_order(self):
+        with self._lock:
+            return super().in_order()
+
     def __len__(self):
         with self._lock:
             return super().__len__()

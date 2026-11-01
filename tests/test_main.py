@@ -73,6 +73,17 @@ def test_live_run_labels_the_check_live_and_keeps_the_sweep_simulated(demo, caps
     assert sorted(demo) == ["Chrome", "FortiClient", "Outlook", "Zoom"]
 
 
+# R5.1 - the gather results reach the service: ticket #16 (Chrome, LOW) becomes HIGH and moves up
+def test_async_sweep_updates_tickets_and_reorders_the_queue(demo, capsys):
+    main.main([])
+    sweep = capsys.readouterr().out.split("sequential vs gather [SIMULATED] ===")[1]
+    before = sweep.split("Queue before the sweep: ")[1].splitlines()[0]
+    after = sweep.split("Queue after the sweep: ")[1].splitlines()[0]
+    assert before.endswith("'#16 LOW']")
+    assert "'#1 HIGH', '#16 HIGH', '#10 MEDIUM'" in after
+    assert "#2   FortiClient  unknown" in sweep
+
+
 # R5.5 - the real client blocks on HTTP and retry waits, so it never runs inside an event loop
 def test_live_client_is_never_called_inside_an_event_loop(demo, capsys):
     inside_event_loop.clear()

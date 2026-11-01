@@ -38,6 +38,7 @@ def export_report(requested_by, tickets, now, path):
         json.dump(report, f, ensure_ascii=False, indent=2)
     return report
 
+
 def vulnerability_report(tickets):
     summary = {}
     for ticket in tickets:
