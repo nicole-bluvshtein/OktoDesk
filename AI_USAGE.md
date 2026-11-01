@@ -204,6 +204,22 @@ the thread race to `main.py`, without changing Nicole's part 1.
   ticket. The failed-port run showed that is false after a failed check (a
   failure is not cached, so it is asked again). The message now states the rule.
 
+**Found in Nicole's review, not by the AI.** The AI's version of
+`vulnerability_demo` called the blocking `NvdClient` from inside an `async`
+function, which section 5.1 forbids (no blocking HTTP inside async code). All
+tests passed, and the AI's own audit missed it because it only searched
+`async_processing.py`. Nicole replaced it with a plain loop and added
+`test_live_client_is_never_called_inside_an_event_loop`, which fails on the old
+code. Lesson: a passing suite does not prove a rule that no test checks.
+
+### After the first-pass audit: T32
+
+The audit found that the planned combined-flow test (T32, R4.8) did not exist.
+The AI wrote it: one vulnerable Chrome ticket through the client, the queue,
+assignment, closing, both observers, a mocked notification channel and the
+vulnerability report. Expected values come from the business rules. Removing
+"raise to HIGH" from `services.py` for a moment made it fail on that exact line.
+
 ## Nicole's track (Stage 2: Phases 0–2 with Amit, then 3.1, 3.3, 4.2, 5.2, 6.1 and README parts)
 
 Claude (via Claude Code) proposed the design and code for each step, and Nicole
