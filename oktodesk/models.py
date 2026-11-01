@@ -294,7 +294,8 @@ class Ticket:
             updated_at=updated_at,
             closed_at=_parse_timestamp(data.get("closed_at")),
             solution=data.get("solution"),
-            activity_log=data.get("activity_log", []),
+            activity_log=[{**entry, "timestamp": _parse_timestamp(entry.get("timestamp"))}
+                          for entry in data.get("activity_log", [])],
             waiting_since=waiting_since,
             waiting_hours=data.get("waiting_hours", 0.0),
             affected_product=data.get("affected_product"),

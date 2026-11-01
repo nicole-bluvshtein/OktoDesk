@@ -62,7 +62,7 @@ class TicketService:
                 report = self.vulnerability_client.find_recent_critical(product)
             except VulnerabilityServiceError as error:
                 logger.warning("Vulnerability check for %r failed: %s", product, error)
-                self._mark_unknown(ticket, product)
+                self._record_failed_check(ticket, product)
                 return None
             self._vulnerability_reports[product.lower()] = report
         self._apply_report(ticket, report)
@@ -75,7 +75,7 @@ class TicketService:
             if result.report is None:
                 logger.warning("Sweep could not check %r: %s", result.product, result.error)
                 for ticket in self._open_tickets_for(result.product):
-                    self._mark_unknown(ticket, result.product)
+                    self._record_failed_check(ticket, result.product)
                 continue
             self._vulnerability_reports[result.product.lower()] = result.report
             for ticket in self._open_tickets_for(result.product):
@@ -89,7 +89,13 @@ class TicketService:
                 if ticket.status != Status.CLOSED and ticket.affected_product
                 and ticket.affected_product.lower() == product.lower()]
 
-    def _mark_unknown(self, ticket, product):
+    def _record_failed_check(self, ticket, product):
+        # a failed check tells us nothing new: a known risk stays (with its CVEs and priority),
+        # but "clear" can no longer be confirmed, so it becomes "unknown"
+        if ticket.vulnerability_check == "vulnerable":
+            ticket.add_log_entry("system", f"vulnerability re-check failed for {product}; "
+                                           f"keeping the last result: {', '.join(ticket.linked_cves)}")
+            return
         ticket.vulnerability_check = "unknown"
         ticket.add_log_entry("system", f"vulnerability check unknown for {product}")
 
