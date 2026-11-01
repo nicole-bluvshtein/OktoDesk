@@ -172,6 +172,38 @@ rules: three products that finish in a different order from the input, one
 product that always fails, and only `CVE-SIM-` ids. A test
 (`test_shipped_simulated_data_uses_only_fake_ids`) keeps it that way.
 
+### Step 6.2: main.py part 2
+
+**Prompt (summary):** add the vulnerability check (offline by default, real
+with `--live`, every line labelled), the sequential vs `gather` comparison and
+the thread race to `main.py`, without changing Nicole's part 1.
+
+**Amit decided:**
+- `--live` sends only the vulnerability check to NVD (one request per product,
+  4 when the checks succeed); the sequential vs `gather` comparison always stays simulated,
+  because NVD allows 5 requests per 30 seconds without a key.
+- The simulated client for the check made when a ticket opens lives in
+  `async_processing.py`, with its own tests.
+- The thread race is shown with the Lock only; a run without it gives a
+  different result each time and would make the demo unreliable.
+
+**What we checked**
+- `tests/test_main.py` proves the requirements instead of eyeballing the
+  output: the default run never builds the real client and labels every line
+  `[SIMULATED]`; `--live` and `OKTODESK_LIVE=true` label the check `[LIVE]` and
+  make one request per product.
+- `--live` was run against a closed local port (no request reached NVD): every
+  product became "unknown", priorities were unchanged, and the demo finished.
+
+**What we fixed**
+- The first simulated client called `asyncio.run` and crashed when the sweep
+  used it inside its own event loop (`RuntimeError: asyncio.run() cannot be
+  called from a running event loop`). It is now a plain call with no event loop,
+  sharing one function with the async version.
+- A demo message claimed "result reused, no new request" for a new Chrome
+  ticket. The failed-port run showed that is false after a failed check (a
+  failure is not cached, so it is asked again). The message now states the rule.
+
 ## Nicole's track (Stage 2: Phases 0–2 with Amit, then 3.1, 3.3, 4.2, 5.2, 6.1 and README parts)
 
 Claude (via Claude Code) proposed the design and code for each step, and Nicole
